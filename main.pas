@@ -47,7 +47,8 @@ uses
 
 const
   AppName = 'Transmission Remote GUI';
-  AppVersion = '5.18.0';
+  AppVersion = '6.0';
+  AppArch = {$if defined(darwin) and defined(cpuaarch64)}'arm64'{$else}{$I %FPCTARGETCPU}{$endif};
 
 resourcestring
   sAll = 'All torrents';
@@ -1791,7 +1792,7 @@ begin
   FAppProps.CaptureExceptions := True;
 
 
-  Application.Title:=AppName + ' v' + AppVersion;
+  Application.Title:=AppName + ' v' + AppVersion + ' (' + AppArch + ')';
   Caption:=Application.Title;
   txTransferHeader.Font.Size:=Font.Size + 2;
   txTorrentHeader.Font.Size:=txTransferHeader.Font.Size;

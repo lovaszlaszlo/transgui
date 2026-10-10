@@ -1,3 +1,9 @@
+6.0 (Oct 10, 2026)
+ - Native Apple Silicon (arm64) build for macOS
+ - Bundle OpenSSL 3 with the macOS arm64 package
+ - Fix crash on macOS when HTTPS is used: load versioned OpenSSL libraries
+ - Show the CPU architecture in the main window title
+
 5.18.0 (Oct 11, 2019)
  - Enable smart linking (#1252)
  - Add basic snap package files (#1109)
