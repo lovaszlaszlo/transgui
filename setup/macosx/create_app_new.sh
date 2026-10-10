@@ -12,11 +12,34 @@ fi
 prog_ver="$(cat ../../VERSION.txt)"
 build="$(git rev-list --abbrev-commit --max-count=1 HEAD ../..)"
 
-if [ -z "${CI-}" ]; then
+# Target architecture: x86_64 (default on Intel) or arm64 (default on Apple Silicon).
+target_arch="${TRANSGUI_ARCH:-$(uname -m)}"
+case "$target_arch" in
+  arm64 | aarch64)
+    target_arch=arm64
+    target_cpu=aarch64
+    dmg_suffix="-arm64"
+    ;;
+  x86_64)
+    target_cpu=x86_64
+    dmg_suffix=""
+    ;;
+  *)
+    echo "Unsupported target architecture: $target_arch" >&2
+    exit 1
+    ;;
+esac
+
+# install_deps.sh installs the Intel toolchain only. For arm64 install FPC and
+# Lazarus yourself and pass the Lazarus directory as the first argument.
+if [ -z "${CI-}" ] && [ "$target_arch" = "x86_64" ]; then
   ./install_deps.sh
 fi
 
-fpc_bin="/usr/local/bin/fpc"
+fpc_bin="${FPC:-/usr/local/bin/fpc}"
+if [ ! -x "$fpc_bin" ] && [ "$target_arch" = "arm64" ]; then
+  fpc_bin="$(command -v fpc || :)"
+fi
 if [ ! -x "$fpc_bin" ]; then
   echo "Unable to find fpc at $fpc_bin." >&2
   exit 1
@@ -24,7 +47,7 @@ fi
 fpc_ver="Free Pascal Compiler version $("$fpc_bin" -iV)"
 exename=../../transgui
 appname="Transmission Remote GUI"
-dmg_dist_file="../../Release/transgui-$prog_ver.dmg"
+dmg_dist_file="../../Release/transgui-$prog_ver$dmg_suffix.dmg"
 dmg_temp_file="$dmg_dist_file.tmp.dmg"
 dmgfolder=./Release
 appfolder="$dmgfolder/$appname.app"
@@ -125,24 +148,59 @@ cleanup_lazbuild_state() {
 
 run_lazbuild() {
   cleanup_lazbuild_state
-  "$lazbuild_bin" -B ../../trcomp.lpk --lazarusdir="$lazarus_dir" --compiler="$fpc_bin" --cpu=x86_64 --widgetset=cocoa --pcp="$lazarus_pcp"
-  "$lazbuild_bin" -B ../../transgui.lpi --lazarusdir="$lazarus_dir" --compiler="$fpc_bin" --cpu=x86_64 --widgetset=cocoa --pcp="$lazarus_pcp"
+  "$lazbuild_bin" -B ../../trcomp.lpk --lazarusdir="$lazarus_dir" --compiler="$fpc_bin" --cpu="$target_cpu" --widgetset=cocoa --pcp="$lazarus_pcp"
+  # shellcheck disable=SC2086
+  "$lazbuild_bin" -B ../../transgui.lpi --lazarusdir="$lazarus_dir" --compiler="$fpc_bin" --cpu="$target_cpu" --widgetset=cocoa --pcp="$lazarus_pcp" $lazbuild_opts
+}
+
+# Copies OpenSSL 3 into the application bundle, so HTTPS works without Homebrew.
+bundle_openssl() {
+  openssl_lib="${OPENSSL_LIB_DIR:-$(brew --prefix openssl@3 2> /dev/null || :)/lib}"
+  if [ ! -f "$openssl_lib/libssl.3.dylib" ] || [ ! -f "$openssl_lib/libcrypto.3.dylib" ]; then
+    echo "OpenSSL 3 was not found in $openssl_lib; the application will look for it at run time." >&2
+    return 0
+  fi
+
+  frameworks="$appfolder/Contents/Frameworks"
+  mkdir -p "$frameworks"
+  cp -L "$openssl_lib/libssl.3.dylib" "$openssl_lib/libcrypto.3.dylib" "$frameworks"
+  chmod u+w "$frameworks/libssl.3.dylib" "$frameworks/libcrypto.3.dylib"
+  crypto_ref="$(otool -L "$frameworks/libssl.3.dylib" | awk '/libcrypto\.3\.dylib/ {print $1; exit}')"
+  install_name_tool -id @loader_path/libcrypto.3.dylib "$frameworks/libcrypto.3.dylib"
+  install_name_tool -id @loader_path/libssl.3.dylib \
+    -change "$crypto_ref" @loader_path/libcrypto.3.dylib "$frameworks/libssl.3.dylib"
+  codesign --force --sign - "$frameworks/libcrypto.3.dylib" "$frameworks/libssl.3.dylib"
 }
 
 mkdir -p ../../Release/
 sed -i.bak "s/'Version %s'/'Version %s Build $build'#13#10'Compiled by: $fpc_ver, Lazarus v$lazarus_ver'/" ../../about.lfm
 
-run_lazbuild
+if [ "$target_arch" = "arm64" ]; then
+  # FPC 3.2.2 emits Objective-C metadata the current Apple linker rejects
+  # ("malformed method list atom"), so the classic linker is required.
+  lazbuild_opts="--opt=-k-ld_classic"
+  run_lazbuild
+  # The tracked Makefile has no aarch64-darwin target; use the lazbuild output.
+  cp ../../units/transgui "$exename"
+else
+  lazbuild_opts=""
+  run_lazbuild
 
-# Building Intel version
-make -j"$(sysctl -n hw.ncpu)" -C ../.. clean CPU_TARGET=x86_64 FPC="$fpc_bin" "$lazdir"
-make -j"$(sysctl -n hw.ncpu)" -C ../.. CPU_TARGET=x86_64 FPC="$fpc_bin" "$lazdir"
+  # Building Intel version
+  make -j"$(sysctl -n hw.ncpu)" -C ../.. clean CPU_TARGET=x86_64 FPC="$fpc_bin" "$lazdir"
+  make -j"$(sysctl -n hw.ncpu)" -C ../.. CPU_TARGET=x86_64 FPC="$fpc_bin" "$lazdir"
+fi
 
 if ! [ -e $exename ]; then
   echo "$exename does not exist"
   exit 1
 fi
 strip "$exename"
+if [ "$target_arch" = "arm64" ]; then
+  # Apple Silicon refuses to run unsigned code, and strip invalidates the linker signature.
+  # Sign before the binary enters the bundle: the language files next to it cannot be sealed.
+  codesign --force --sign - "$exename"
+fi
 
 remove_dmgfolder=1
 rm -rf "$appfolder"
@@ -160,6 +218,10 @@ cp ../../README.md "$dmgfolder"
 cp PkgInfo "$appfolder/Contents"
 cp transgui.icns "$appfolder/Contents/Resources"
 sed -e "s/@prog_ver@/$prog_ver/" Info.plist > "$appfolder/Contents/Info.plist"
+
+if [ "$target_arch" = "arm64" ]; then
+  bundle_openssl
+fi
 
 ln -s /Applications "$dmgfolder/Drag \"Transmission Remote GUI\" here!"
 
