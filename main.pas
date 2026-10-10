@@ -1591,7 +1591,10 @@ end;
 function TMainForm.CreateScaledImages(ASize: integer): TImageList;
 var
   Ico: TIcon;
-  IconCount, i: integer;
+{$ifdef darwin}
+  Bmp: TBitmap;
+{$endif darwin}
+  IconCount, i, AddedIndex: integer;
   SourceImages: TImageList;
 begin
   // Both source lists must keep the same semantic meaning at each shared index.
@@ -1617,8 +1620,20 @@ begin
           SourceImages:=ImageList16
         else
           SourceImages:=ImageList32;
+{$ifdef darwin}
+        // On Cocoa GetIcon returns a handle-only icon, which AddIcon cannot read.
+        Bmp:=TBitmap.Create;
+        try
+          SourceImages.GetBitmap(i, Bmp);
+          AddedIndex:=Result.Add(Bmp, nil);
+        finally
+          Bmp.Free;
+        end;
+{$else}
         SourceImages.GetIcon(i, Ico);
-        if Result.AddIcon(Ico) <> i then
+        AddedIndex:=Result.AddIcon(Ico);
+{$endif darwin}
+        if AddedIndex <> i then
           raise Exception.CreateFmt('Unable to add scaled icon %d.', [i]);
       end;
     finally
