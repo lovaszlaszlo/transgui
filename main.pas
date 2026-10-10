@@ -801,6 +801,8 @@ type
     function FixSeparators(const p: string): string;
     function MapRemoteToLocal(const RemotePath: string): string;
     procedure CheckAddTorrents;
+    procedure UpdateThemeColors;
+    procedure ThemeChanged(Sender: TObject);
     procedure CheckClipboardLink;
     procedure CenterDetailsWait;
     procedure SetInfoPaneHeight(AHeight: integer);
@@ -969,7 +971,7 @@ uses
 {$endif darwin}
   synacode, ConnOptions, clipbrd, DateUtils, TorrProps, DaemonOptions, About,
   ToolWin, download, ColSetup, AddLink, MoveTorrent, AddTracker, lcltype,
-  Options, ButtonPanel, BEncode, synautil, Math, FolderHistory;
+  Options, ButtonPanel, BEncode, synautil, Math, FolderHistory, Themes;
 
   {TMyHashMap}
   function TMyHashMap.DefaultHashKey(const Key: Integer): Integer;
@@ -1818,12 +1820,9 @@ begin
   FTrackers:=TStringList.Create;
   FTrackers.Sorted:=True;
   FReconnectTimeOut:=-1;
-  FAlterColor:=GetLikeColor(gTorrents.Color, -$10);
   lvFilter.Items.ExtraColumns:=2;
-  gTorrents.AlternateColor:=FAlterColor;
-  lvPeers.AlternateColor:=FAlterColor;
-  lvTrackers.AlternateColor:=FAlterColor;
-  gStats.AlternateColor:=FAlterColor;
+  UpdateThemeColors;
+  ThemeServices.OnThemeChange:=@ThemeChanged;
   FPendingTorrents:=TStringList.Create;
   FPendingTorrents.OwnsObjects:=False; // Object slots hold the sentinel, not instances.
   FPendingClipboardTorrents:=TStringList.Create;
@@ -1877,8 +1876,6 @@ begin
   acAltSpeed.ImageIndex:=-1;
   tbtAltSpeed.ImageIndex:=i;
 {$endif}
-  txTransferHeader.Color:=GetLikeColor(clBtnFace, -15);
-  txTorrentHeader.Color:=txTransferHeader.Color;
   txTransferHeader.Caption:=' ' + txTransferHeader.Caption;
   txTorrentHeader.Caption:=' ' + txTorrentHeader.Caption;
   txTransferHeader.Height:=txTransferHeader.Canvas.TextHeight(txTransferHeader.Caption) + 2;
@@ -2136,6 +2133,7 @@ begin
     MakeTranslationFile;
   end;
 
+  ThemeServices.OnThemeChange:=nil;
   DeleteFileUTF8(FRunFileName);
   FPasswords.Free;
   FResolver.Free;
@@ -8520,6 +8518,24 @@ begin
   acForceStartTorrent.Visible:=RPCVersion >= 14;
   tabStats.Visible:=RpcVersion >= 4;
   acRename.Visible:=RpcVersion >= 15;
+end;
+
+procedure TMainForm.UpdateThemeColors;
+begin
+  // These colors are derived from system colors, so they must follow theme changes
+  // such as the macOS light/dark appearance switch.
+  FAlterColor:=GetLikeColor(gTorrents.Color, -$10);
+  gTorrents.AlternateColor:=FAlterColor;
+  lvPeers.AlternateColor:=FAlterColor;
+  lvTrackers.AlternateColor:=FAlterColor;
+  gStats.AlternateColor:=FAlterColor;
+  txTransferHeader.Color:=GetLikeColor(clBtnFace, -15);
+  txTorrentHeader.Color:=txTransferHeader.Color;
+end;
+
+procedure TMainForm.ThemeChanged(Sender: TObject);
+begin
+  UpdateThemeColors;
 end;
 
 procedure TMainForm.CheckAddTorrents;
