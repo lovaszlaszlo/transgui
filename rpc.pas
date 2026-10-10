@@ -196,7 +196,41 @@ var
 
 function EnsureOpenSSLLoaded(out ASSLName, AUtilName: string): boolean;
 {$ifdef unix}
-{$ifndef darwin}
+{$ifdef darwin}
+  procedure CheckOpenSSL;
+  const
+  // An empty entry stands for the Frameworks folder of the application bundle.
+  OpenSSLDirs: array[1..4] of string =
+  ('', '/opt/homebrew/opt/openssl@3/lib/', '/usr/local/opt/openssl@3/lib/', '/opt/local/lib/');
+  SSLFileName = 'libssl.3.dylib';
+  UtilFileName = 'libcrypto.3.dylib';
+  var
+    hLib1, hLib2: TLibHandle;
+    i: integer;
+    dir: string;
+  begin
+    // Never fall back to the unversioned libssl.dylib/libcrypto.dylib names:
+    // macOS aborts a process that loads them from /usr/lib.
+    DLLSSLName:=SSLFileName;
+    DLLUtilName:=UtilFileName;
+    for i:=Low(OpenSSLDirs) to High(OpenSSLDirs) do begin
+      dir:=OpenSSLDirs[i];
+      if dir = '' then
+        dir:=ExtractFilePath(ParamStr(0)) + '../Frameworks/';
+      hlib2:=LoadLibrary(PChar(dir + UtilFileName));
+      hlib1:=LoadLibrary(PChar(dir + SSLFileName));
+      if hLib1 <> 0 then
+        FreeLibrary(hLib1);
+      if hLib2 <> 0 then
+        FreeLibrary(hLib2);
+      if (hLib1 <> 0) and (hLib2 <> 0) then begin
+        DLLSSLName:=dir + SSLFileName;
+        DLLUtilName:=dir + UtilFileName;
+        break;
+      end;
+    end;
+  end;
+{$else darwin}
   procedure CheckOpenSSL;
   const
   OpenSSLVersions: array[1..6] of string =
@@ -226,9 +260,7 @@ begin
   try
     if not IsSSLloaded then begin
 {$ifdef unix}
-{$ifndef darwin}
       CheckOpenSSL;
-{$endif darwin}
 {$endif unix}
       InitSSLInterface;
     end;
