@@ -1235,6 +1235,13 @@ begin
 end;
 
 procedure AddTorrentFile(const FileName: string);
+const
+{$ifdef unix}
+  // fmShareDenyRead is not supported on Unix: FileOpen always fails with it.
+  IPCWriteShareMode = fmShareExclusive;
+{$else}
+  IPCWriteShareMode = fmShareDenyRead or fmShareDenyWrite;
+{$endif unix}
 var
   h: System.THandle;
   t: TDateTime;
@@ -1247,7 +1254,7 @@ begin
   t:=Now;
   repeat
     if FileExistsUTF8(FIPCFileName) then
-      h:=FileOpenUTF8(FIPCFileName, fmOpenWrite or fmShareDenyRead or fmShareDenyWrite)
+      h:=FileOpenUTF8(FIPCFileName, fmOpenWrite or IPCWriteShareMode)
     else
       h:=FileCreateUTF8(FIPCFileName);
     if h <> System.THandle(-1) then begin
