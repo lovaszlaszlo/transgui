@@ -178,7 +178,9 @@ sed -i.bak "s/'Version %s'/'Version %s Build $build'#13#10'Compiled by: $fpc_ver
 if [ "$target_arch" = "arm64" ]; then
   # FPC 3.2.2 emits Objective-C metadata the current Apple linker rejects
   # ("malformed method list atom"), so the classic linker is required.
-  lazbuild_opts="--opt=-k-ld_classic"
+  # Its size optimizer (-Os, "SmallerCode" in transgui.lpi) miscompiles aarch64 code:
+  # the application halts with exit code 255 while painting. Use plain -O1 instead.
+  lazbuild_opts="--opt=-k-ld_classic --opt=-O- --opt=-O1"
   run_lazbuild
   # The tracked Makefile has no aarch64-darwin target; use the lazbuild output.
   cp ../../units/transgui "$exename"
