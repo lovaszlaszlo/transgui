@@ -198,21 +198,23 @@ if ! [ -e $exename ]; then
   exit 1
 fi
 strip "$exename"
-if [ "$target_arch" = "arm64" ]; then
-  # Apple Silicon refuses to run unsigned code, and strip invalidates the linker signature.
-  # Sign before the binary enters the bundle: the language files next to it cannot be sealed.
-  codesign --force --sign - "$exename"
-fi
 
 remove_dmgfolder=1
 rm -rf "$appfolder"
 
 echo "Creating $appfolder..."
-mkdir -p "$appfolder/Contents/MacOS/lang"
+if [ "$target_arch" = "arm64" ]; then
+  # Data files next to the executable cannot be sealed by the bundle signature.
+  langfolder="$appfolder/Contents/Resources/lang"
+else
+  langfolder="$appfolder/Contents/MacOS/lang"
+fi
+mkdir -p "$appfolder/Contents/MacOS"
+mkdir -p "$langfolder"
 mkdir -p "$appfolder/Contents/Resources"
 
 mv "$exename" "$appfolder/Contents/MacOS"
-cp ../../lang/transgui.* "$appfolder/Contents/MacOS/lang"
+cp ../../lang/transgui.* "$langfolder"
 
 cp ../../history.txt "$dmgfolder"
 cp ../../README.md "$dmgfolder"
@@ -223,6 +225,8 @@ sed -e "s/@prog_ver@/$prog_ver/" Info.plist > "$appfolder/Contents/Info.plist"
 
 if [ "$target_arch" = "arm64" ]; then
   bundle_openssl
+  # Apple Silicon refuses to run unsigned code, and strip invalidates the linker signature.
+  codesign --force --sign - "$appfolder"
 fi
 
 ln -s /Applications "$dmgfolder/Drag \"Transmission Remote GUI\" here!"

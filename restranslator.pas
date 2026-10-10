@@ -284,6 +284,11 @@ var
 begin
   if FDefaultLangDir = '' then begin
     FDefaultLangDir:=ExtractFilePath(ParamStrUtf8(0)) + 'lang' + DirectorySeparator;
+{$ifdef darwin}
+    // A signed application bundle keeps its data files in Resources.
+    if not _IsLangDir(FDefaultLangDir) then
+      FDefaultLangDir:=ExtractFilePath(ParamStrUtf8(0)) + '../Resources/lang/';
+{$endif darwin}
 {$ifdef unix}
     if not _IsLangDir(FDefaultLangDir) then begin
       s:='/usr/share/' + ExtractFileNameOnly(ParamStrUtf8(0)) + '/lang/';
