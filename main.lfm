@@ -1102,7 +1102,6 @@ inherited MainForm: TMainForm
     ShowCaptions = True
     ShowHint = True
     TabOrder = 2
-    OnContextPopup = MainToolBarContextPopup
     object ToolButton1: TToolButton
       Left = 179
       Top = 2

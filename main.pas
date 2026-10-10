@@ -650,7 +650,6 @@ type
     procedure lvTrackersDblClick(Sender: TObject);
     procedure lvTrackersKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure goDevelopmentSiteClick(Sender: TObject);
-    procedure MainToolBarContextPopup(Sender: TObject; MousePos: TPoint; var Handled: Boolean);
     procedure MenuItem101Click(Sender: TObject);
     procedure miHomePageClick(Sender: TObject);
     procedure PageInfoResize(Sender: TObject);
@@ -971,7 +970,8 @@ uses
 {$endif darwin}
   synacode, ConnOptions, clipbrd, DateUtils, TorrProps, DaemonOptions, About,
   ToolWin, download, ColSetup, AddLink, MoveTorrent, AddTracker, lcltype,
-  Options, ButtonPanel, BEncode, synautil, Math, FolderHistory, Themes;
+  Options, ButtonPanel, BEncode, synautil, Math, FolderHistory, Themes,
+  GraphType, IntfGraphics;
 
   {TMyHashMap}
   function TMyHashMap.DefaultHashKey(const Key: Integer): Integer;
@@ -1589,6 +1589,28 @@ end;
 { TMainForm }
 
 function TMainForm.CreateScaledImages(ASize: integer): TImageList;
+
+  function IsBlankImage(AImages: TImageList; AIndex: integer): boolean;
+  var
+    RawImg: TRawImage;
+    Img: TLazIntfImage;
+    x, y: integer;
+  begin
+    Result:=True;
+    AImages.GetRawImage(AIndex, RawImg);
+    Img:=TLazIntfImage.Create(RawImg, False);
+    try
+      for y:=0 to Img.Height - 1 do
+        for x:=0 to Img.Width - 1 do
+          if Img.Colors[x, y].alpha <> 0 then begin
+            Result:=False;
+            exit;
+          end;
+    finally
+      Img.Free;
+    end;
+  end;
+
 var
   Ico: TIcon;
 {$ifdef darwin}
@@ -1614,7 +1636,9 @@ begin
     Ico:=TIcon.Create;
     try
       for i:=0 to IconCount - 1 do begin
-        if (ASize > ImageList16.Width) and (i < ImageList32.Count) then
+        // ImageList32 holds only the toolbar icons; its other entries are blank.
+        if (ASize > ImageList16.Width) and (i < ImageList32.Count) and
+           not IsBlankImage(ImageList32, i) then
           SourceImages:=ImageList32
         else if i < ImageList16.Count then
           SourceImages:=ImageList16
@@ -2500,6 +2524,7 @@ begin
     cbDeleteTorrentFile.Checked:=Ini.ReadBool('Interface', 'DeleteTorrentFile', False);
     cbLinksFromClipboard.Checked:=Ini.ReadBool('Interface', 'LinksFromClipboard', False);
     edIntfScale.Value:=ReadIntfScale(IntfScale);
+    cbBigToolbar.Checked:=acBigToolbar.Checked;
     cbCheckNewVersion.Checked:=Ini.ReadBool('Interface', 'CheckNewVersion', False);
     edCheckVersionDays.Value:=Ini.ReadInteger('Interface', 'CheckNewVersionDays', 5);
     cbCheckNewVersionClick(nil);
@@ -2535,6 +2560,8 @@ begin
         FPendingClipboardTorrents.Clear;
 
       Ini.WriteInteger('Interface', 'Scaling', edIntfScale.Value);
+      if cbBigToolbar.Checked <> acBigToolbar.Checked then
+        acBigToolbar.Execute;
 
       Ini.WriteBool('Interface', 'CheckNewVersion', cbCheckNewVersion.Checked);
       Ini.WriteInteger('Interface', 'CheckNewVersionDays', edCheckVersionDays.Value);
@@ -5166,12 +5193,6 @@ end;
 procedure TMainForm.goDevelopmentSiteClick(Sender: TObject);
 begin
   goGitHub;
-end;
-
-procedure TMainForm.MainToolBarContextPopup(Sender: TObject; MousePos: TPoint;
-  var Handled: Boolean);
-begin
-    acBigToolBar.Execute;
 end;
 
 procedure TMainForm.MenuItem101Click(Sender: TObject);
