@@ -111,16 +111,16 @@ resourcestring
   sRestartNow = 'You need to restart the application to apply changes. Restart now?';
   sPeerFlagO = 'Optimistic unchoke';
   sPeerFlagD = 'Downloading from this peer';
-  sPeerFlagDWait = 'We would download from this peer if they would let us';
+  sPeerFlagDWait = 'Would download from this peer if allowed';
   sPeerFlagU = 'Uploading to this peer';
-  sPeerFlagUWait = 'We would upload to this peer if they asked';
-  sPeerFlagK = 'The peer has unchoked us, but we are not interested';
-  sPeerFlagQ = 'We unchoked this peer, but they are not interested';
+  sPeerFlagUWait = 'Would upload to this peer if asked';
+  sPeerFlagK = 'Peer unchoked us, but we are not interested';
+  sPeerFlagQ = 'We unchoked the peer, but it is not interested';
   sPeerFlagE = 'Encrypted connection';
-  sPeerFlagH = 'The peer was found through DHT';
-  sPeerFlagX = 'The peer was found through peer exchange (PEX)';
-  sPeerFlagI = 'The peer is an incoming connection';
-  sPeerFlagT = 'The peer is connected over uTP';
+  sPeerFlagH = 'Peer was found through DHT';
+  sPeerFlagX = 'Peer was found through peer exchange (PEX)';
+  sPeerFlagI = 'Peer is an incoming connection';
+  sPeerFlagT = 'Peer is connected over uTP';
   sToolbarSmall = 'Small toolbar';
   sToolbarMedium = 'Medium toolbar';
   sToolbarLarge = 'Large toolbar';
@@ -1842,6 +1842,8 @@ const
   SymTeal = $00C8B030;
   SymPurple = $00DE52AF;
   SymGray = $00938E8E;
+  SymIndigo = $00D65658;
+  SymBrown = $005E84A2;
   // Icons replaced by macOS system symbols, by image index. The toolbar,
   // the menus, the lists and the tabs all use the same symbols.
   SymbolNames: array[0..36] of record
@@ -1857,7 +1859,7 @@ const
     (Index: 5;  Name: 'antenna.radiowaves.left.and.right'; Color: SymPurple), // trackers
     (Index: 6;  Name: 'person.2.fill'; Color: SymBlue),                    // peers tab
     (Index: 7;  Name: 'doc.on.doc.fill'; Color: SymGray),                  // files tab
-    (Index: 8;  Name: 'wrench.and.screwdriver.fill'; Color: SymGray),      // Transmission options
+    (Index: 8;  Name: 'wrench.and.screwdriver.fill'; Color: SymBrown),      // Transmission options
     (Index: 9;  Name: 'arrow.down.circle.fill'; Color: SymBlue),           // imgDown
     (Index: 10; Name: 'arrow.up.circle.fill'; Color: SymGreen),            // imgSeed
     (Index: 11; Name: 'arrow.down.circle.fill'; Color: SymRed),            // imgDownError
@@ -1884,7 +1886,7 @@ const
     (Index: 40; Name: 'arrow.up.circle.fill'; Color: SymBlue),             // queue up
     (Index: 41; Name: 'arrow.down.circle.fill'; Color: SymBlue),           // queue down
     (Index: 42; Name: 'clock.fill'; Color: SymGray),                       // imgWaiting
-    (Index: 43; Name: 'gearshape.fill'; Color: SymGray),                   // application options
+    (Index: 43; Name: 'gearshape.fill'; Color: SymIndigo),                  // application options
     (Index: 44; Name: 'tag.fill'; Color: SymOrange)                        // label
   );
   SearchSymbolName = 'magnifyingglass';

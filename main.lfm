@@ -2132,7 +2132,7 @@ inherited MainForm: TMainForm
           0000000000000000000000000000000000000000000000000000
         }
         Hint = 'Application Options (Ctrl+F9)'
-        ImageIndex = 8
+        ImageIndex = 43
         OnClick = acOptionsExecute
       end
       object MenuItem32: TMenuItem
