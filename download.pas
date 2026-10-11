@@ -92,7 +92,7 @@ function DownloadFile(const URL, DestFolder: string; const DestFileName: string 
 
 implementation
 
-uses Main, rpc;
+uses Main, rpc, blcksock;
 
 function DownloadFile(const URL, DestFolder: string; const DestFileName, DisplayName: string): boolean;
 var
@@ -151,6 +151,7 @@ end;
 procedure TDownloadThread.Execute;
 var
   res: PtrInt;
+  ok: boolean;
 begin
   res:=1;
   try
@@ -163,7 +164,16 @@ begin
         FHttp.ProxyPass:=RpcObj.Http.ProxyPass;
       end;
       FHttp.Sock.OnMonitor:=@DoMonitor;
-      if FHttp.HTTPMethod('GET', FUrl) then begin
+      // A host with an IPv6 address is not reachable on IPv4-only networks,
+      // and the socket does not fall back by itself: try IPv4 first.
+      FHttp.Sock.Family:=SF_IP4;
+      ok:=FHttp.HTTPMethod('GET', FUrl);
+      if not ok and not Terminated and (FOut = nil) then begin
+        FHttp.Clear;
+        FHttp.Sock.Family:=SF_Any;
+        ok:=FHttp.HTTPMethod('GET', FUrl);
+      end;
+      if ok then begin
         if FHttp.ResultCode = 200 then begin
           FForm.FDownloaded:=FHttp.DownloadSize;
           WriteToFile;
