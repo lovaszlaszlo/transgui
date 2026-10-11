@@ -189,10 +189,48 @@ function EnsureOpenSSLLoaded(out ASSLName, AUtilName: string): boolean;
 
 implementation
 
-uses Main, ssl_openssl_lib, synafpc, blcksock;
+uses Main, ssl_openssl_lib, synafpc, blcksock, LazFileUtils;
+
+const
+  ConnectionLogName = 'connection.log';
+  MaxConnectionLogSize = 256*1024;
 
 var
   OpenSSLInitLock: TCriticalSection;
+  ConnectionLogLock: TCriticalSection;
+
+// Appends a line to the connection log in the application home directory.
+// The log shows where the application tries to connect and how it ends.
+procedure LogConnection(const AText: string);
+var
+  h: System.THandle;
+  fn, s: string;
+begin
+  if FHomeDir = '' then
+    exit;
+  fn:=FHomeDir + ConnectionLogName;
+  ConnectionLogLock.Enter;
+  try
+    if FileExistsUTF8(fn) then
+      h:=FileOpenUTF8(fn, fmOpenWrite or fmShareDenyNone)
+    else
+      h:=FileCreateUTF8(fn);
+    if h = System.THandle(-1) then
+      exit;
+    try
+      if FileSeek(h, 0, soFromEnd) > MaxConnectionLogSize then begin
+        FileTruncate(h, 0);
+        FileSeek(h, 0, soFromBeginning);
+      end;
+      s:=FormatDateTime('yyyy"."mm"."dd hh":"nn":"ss"."zzz', Now) + '  ' + AText + LineEnding;
+      FileWrite(h, s[1], Length(s));
+    finally
+      FileClose(h);
+    end;
+  finally
+    ConnectionLogLock.Leave;
+  end;
+end;
 
 function EnsureOpenSSLLoaded(out ASSLName, AUtilName: string): boolean;
 {$ifdef unix}
@@ -980,7 +1018,7 @@ var
   jp: TJSONParser;
   s: string;
   i, j, OldTimeOut, OldDataTimeOut, OldNonblockSendTimeOut, RetryCnt: integer;
-  locked, r: boolean;
+  locked, r, WasConnected: boolean;
 begin
   AResponseError:='';
   if FRpcPath = '' then
@@ -1012,6 +1050,14 @@ begin
         Http.Sock.SSL.DataTimeout:=ATimeOut;
         Http.Sock.NonblockSendTimeout:=ATimeOut;
       end;
+      WasConnected:=FConnected;
+      if not WasConnected then begin
+        s:=Format('CONNECT %s%s', [Url, FRpcPath]);
+        if Http.ProxyHost <> '' then
+          s:=s + Format(' via proxy %s:%s', [Http.ProxyHost, Http.ProxyPort]);
+        LogConnection(s);
+        s:='';
+      end;
       try
         r:=Http.HTTPMethod('POST', Url + FRpcPath);
       finally
@@ -1019,6 +1065,13 @@ begin
         Http.Sock.SSL.DataTimeout:=OldDataTimeOut;
         Http.Sock.NonblockSendTimeout:=OldNonblockSendTimeOut;
       end;
+      if not r then
+        LogConnection(Format('FAILED  %s%s: socket error %d (%s)',
+          [Url, FRpcPath, Http.Sock.LastError, Http.Sock.LastErrorDesc]))
+      else
+        if not WasConnected then
+          LogConnection(Format('ANSWER  %s%s: HTTP %d from %s',
+            [Url, FRpcPath, Http.ResultCode, Http.Sock.GetRemoteSinIP]));
       if not r then begin
         if FMainThreadId <> GetCurrentThreadId then
           ReconnectAllowed:=True;
@@ -1534,5 +1587,6 @@ end;
 initialization
   // Keep this lock alive for the lifetime of the process.
   OpenSSLInitLock:=TCriticalSection.Create;
+  ConnectionLogLock:=TCriticalSection.Create;
 
 end.
