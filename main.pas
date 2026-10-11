@@ -742,6 +742,8 @@ type
     FSearchSymbols: array[0..2] of TImageList;
     // System symbol icons of the filter list.
     FFilterSymbols: TImageList;
+    // System symbol icons of the lists, menus and tabs.
+    FListSymbols: TImageList;
     FToolTipsState: string;
 {$endif darwin}
     FDetailsWaitStart: TDateTime;
@@ -823,14 +825,15 @@ type
     function MapRemoteToLocal(const RemotePath: string): string;
     procedure CheckAddTorrents;
     procedure BuildMediumImages;
+    procedure AssignSharedImages(AImages: TImageList);
     procedure SetToolbarSize(ASize: integer);
     procedure UpdateThemeColors;
     procedure ThemeChanged(Sender: TObject);
 {$ifdef darwin}
     procedure AppearanceChanged;
     function CreateSymbolList(ASize: integer): TImageList;
-    function AddSymbolImage(AList: TImageList; const AName: string): boolean;
-    function CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AForFilter: boolean): TImageList;
+    function AddSymbolImage(AList: TImageList; const AName: string; AColor: TColor = clNone): boolean;
+    function CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AKind: integer): TImageList;
     procedure UpdateToolbarToolTips;
     procedure BuildToolbarSymbols;
     procedure LayoutSearchBox;
@@ -1807,6 +1810,61 @@ const
     (Index: 42; Name: 'clock'),                              // imgWaiting
     (Index: 44; Name: 'tag')                                 // label
   );
+  // Colors of the status symbols; readable in the light and the dark appearance.
+  SymBlue = $00FF7A00;
+  SymGreen = $0059C734;
+  SymRed = $00303BFF;
+  SymOrange = $000095FF;
+  SymGray = $00938E8E;
+  // Icons of the lists, menus and tabs replaced by macOS system symbols, by image index.
+  // clNone stands for the text-like color of the toolbar symbols.
+  ListSymbolNames: array[0..36] of record
+    Index: integer;
+    Name: string;
+    Color: TColor;
+  end = (
+    (Index: 0;  Name: 'folder.badge.plus'; Color: clNone),
+    (Index: 1;  Name: 'play.circle'; Color: clNone),
+    (Index: 2;  Name: 'pause.circle'; Color: clNone),
+    (Index: 3;  Name: 'trash'; Color: clNone),
+    (Index: 4;  Name: 'info.circle'; Color: clNone),
+    (Index: 5;  Name: 'antenna.radiowaves.left.and.right'; Color: clNone),
+    (Index: 6;  Name: 'person.2'; Color: clNone),
+    (Index: 7;  Name: 'doc.on.doc'; Color: clNone),
+    (Index: 8;  Name: 'wrench.and.screwdriver'; Color: clNone),
+    (Index: 9;  Name: 'arrow.down.circle.fill'; Color: SymBlue),           // imgDown
+    (Index: 10; Name: 'arrow.up.circle.fill'; Color: SymGreen),            // imgSeed
+    (Index: 11; Name: 'arrow.down.circle.fill'; Color: SymRed),            // imgDownError
+    (Index: 12; Name: 'arrow.up.circle.fill'; Color: SymRed),              // imgSeedError
+    (Index: 13; Name: 'exclamationmark.triangle.fill'; Color: SymRed),     // imgError
+    (Index: 14; Name: 'checkmark.circle.fill'; Color: SymGreen),           // imgDone
+    (Index: 15; Name: 'moon.zzz.fill'; Color: SymGray),                    // imgInactive
+    (Index: 16; Name: 'clock.fill'; Color: SymBlue),                       // imgDownQueue
+    (Index: 17; Name: 'clock.fill'; Color: SymGreen),                      // imgSeedQueue
+    (Index: 18; Name: 'powerplug'; Color: clNone),
+    (Index: 19; Name: 'tray.full'; Color: clNone),                         // imgAll
+    (Index: 20; Name: 'arrow.up.arrow.down.circle.fill'; Color: SymGreen), // imgActive
+    (Index: 21; Name: 'link.badge.plus'; Color: clNone),
+    (Index: 22; Name: 'folder.fill'; Color: SymBlue),
+    (Index: 23; Name: 'nosign'; Color: SymGray),                           // skip
+    (Index: 24; Name: 'chevron.down.circle.fill'; Color: SymBlue),         // low priority
+    (Index: 25; Name: 'equal.circle.fill'; Color: SymGreen),               // normal priority
+    (Index: 26; Name: 'chevron.up.circle.fill'; Color: SymRed),            // high priority
+    (Index: 27; Name: 'power'; Color: clNone),
+    (Index: 28; Name: 'doc'; Color: clNone),
+    (Index: 29; Name: 'pause.circle.fill'; Color: SymOrange),              // imgStopped
+    (Index: 38; Name: 'tortoise'; Color: clNone),
+    (Index: 39; Name: 'bolt.circle'; Color: clNone),
+    (Index: 40; Name: 'arrow.up.circle'; Color: clNone),
+    (Index: 41; Name: 'arrow.down.circle'; Color: clNone),
+    (Index: 42; Name: 'clock'; Color: SymGray),                            // imgWaiting
+    (Index: 43; Name: 'gearshape'; Color: clNone),
+    (Index: 44; Name: 'tag'; Color: clNone)
+  );
+  // Kinds of symbol lists.
+  SymbolsForToolbar = 0;
+  SymbolsForFilter = 1;
+  SymbolsForLists = 2;
   SearchSymbolName = 'magnifyingglass';
   SearchCancelSymbolName = 'xmark.circle.fill';
   // Search box metrics at 100% interface scale for each toolbar size.
@@ -1833,17 +1891,19 @@ begin
   Result.RegisterResolutions([ASize, ASize*2]);
 end;
 
-function TMainForm.AddSymbolImage(AList: TImageList; const AName: string): boolean;
+function TMainForm.AddSymbolImage(AList: TImageList; const AName: string; AColor: TColor): boolean;
 var
   Small, Large: TBitmap;
   Images: array[0..1] of TCustomBitmap;
 begin
   Result:=False;
+  if AColor = clNone then
+    AColor:=ToolbarSymbolColor;
   Large:=nil;
-  Small:=CreateSymbolBitmap(AName, AList.Width, ToolbarSymbolColor);
+  Small:=CreateSymbolBitmap(AName, AList.Width, AColor);
   try
     if Small <> nil then
-      Large:=CreateSymbolBitmap(AName, AList.Width*2, ToolbarSymbolColor);
+      Large:=CreateSymbolBitmap(AName, AList.Width*2, AColor);
     if Large <> nil then begin
       Images[0]:=Small;
       Images[1]:=Large;
@@ -1856,10 +1916,11 @@ begin
   end;
 end;
 
-function TMainForm.CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AForFilter: boolean): TImageList;
+function TMainForm.CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AKind: integer): TImageList;
 var
   i, j: integer;
   SymbolName: string;
+  SymbolColor: TColor;
   Bmp: TBitmap;
   HasSymbols: boolean;
 begin
@@ -1868,16 +1929,24 @@ begin
   try
     for i:=0 to AFallback.Count - 1 do begin
       SymbolName:='';
-      if AForFilter then begin
-        for j:=Low(FilterSymbolNames) to High(FilterSymbolNames) do
-          if FilterSymbolNames[j].Index = i then
-            SymbolName:=FilterSymbolNames[j].Name;
-      end
-      else
-        for j:=Low(ToolbarSymbolNames) to High(ToolbarSymbolNames) do
-          if ToolbarSymbolNames[j].Index = i then
-            SymbolName:=ToolbarSymbolNames[j].Name;
-      if (SymbolName <> '') and AddSymbolImage(Result, SymbolName) then begin
+      SymbolColor:=clNone;
+      case AKind of
+        SymbolsForFilter:
+          for j:=Low(FilterSymbolNames) to High(FilterSymbolNames) do
+            if FilterSymbolNames[j].Index = i then
+              SymbolName:=FilterSymbolNames[j].Name;
+        SymbolsForLists:
+          for j:=Low(ListSymbolNames) to High(ListSymbolNames) do
+            if ListSymbolNames[j].Index = i then begin
+              SymbolName:=ListSymbolNames[j].Name;
+              SymbolColor:=ListSymbolNames[j].Color;
+            end;
+        else
+          for j:=Low(ToolbarSymbolNames) to High(ToolbarSymbolNames) do
+            if ToolbarSymbolNames[j].Index = i then
+              SymbolName:=ToolbarSymbolNames[j].Name;
+      end;
+      if (SymbolName <> '') and AddSymbolImage(Result, SymbolName, SymbolColor) then begin
         HasSymbols:=True;
         continue;
       end;
@@ -1929,12 +1998,14 @@ begin
         i:=ScaleInt(ImageList16.Width);
       end;
     end;
-    FToolbarSymbols[Size]:=CreateToolbarSymbols(i, Fallback, False);
+    FToolbarSymbols[Size]:=CreateToolbarSymbols(i, Fallback, SymbolsForToolbar);
     if Size = ToolbarSizeSmall then begin
-      if lvFilter.Images = FFilterSymbols then
-        lvFilter.Images:=Fallback;
+      // Controls must not keep a reference to the lists being replaced.
+      AssignSharedImages(Fallback);
       FreeAndNil(FFilterSymbols);
-      FFilterSymbols:=CreateToolbarSymbols(i, Fallback, True);
+      FreeAndNil(FListSymbols);
+      FFilterSymbols:=CreateToolbarSymbols(i, Fallback, SymbolsForFilter);
+      FListSymbols:=CreateToolbarSymbols(i, Fallback, SymbolsForLists);
     end;
     if FToolbarSymbols[Size] <> nil then begin
       // The search box icons grow with the toolbar, but stay smaller than its buttons.
@@ -2038,50 +2109,62 @@ begin
 end;
 {$endif darwin}
 
-procedure TMainForm.ApplyIconLayout;
+procedure TMainForm.AssignSharedImages(AImages: TImageList);
+
+  function IsShared(AList: TObject): boolean;
+  begin
+    Result:=(AList = ImageList16) or (AList = ImageList32) or (AList = FNormalImages);
+{$ifdef darwin}
+    if (AList <> nil) and ((AList = FListSymbols) or (AList = FFilterSymbols)) then
+      Result:=True;
+{$endif darwin}
+  end;
+
 var
   C: TComponent;
-  i, ToolButtonSize: integer;
-  ToolbarImages: TImageList;
+  i: integer;
+begin
+  // Keep all main-form controls using the shared icon lists on the same set.
+  for i:=0 to ComponentCount - 1 do begin
+    C:=Components[i];
+    if C is TMenu then begin
+      if IsShared(TMenu(C).Images) then begin
+        TMenu(C).Images:=AImages;
+        TMenu(C).ImagesWidth:=AImages.Width;
+      end;
+    end
+    else if C is TToolBar then begin
+      if (C <> MainToolBar) and
+         (IsShared(TToolBar(C).Images) or (TToolBar(C).Images = FBigImages)) then begin
+        TToolBar(C).Images:=AImages;
+        TToolBar(C).ImagesWidth:=AImages.Width;
+      end;
+    end
+    else if C is TCustomTabControl then begin
+      if IsShared(TCustomTabControl(C).Images) then begin
+        TCustomTabControl(C).Images:=AImages;
+        TCustomTabControl(C).ImagesWidth:=AImages.Width;
+      end;
+    end
+    else if C is TVarGrid then begin
+      if IsShared(TVarGrid(C).Images) then
+        TVarGrid(C).Images:=AImages;
+    end;
+  end;
+end;
+
+procedure TMainForm.ApplyIconLayout;
+var
+  ToolButtonSize: integer;
+  ToolbarImages, SharedImages: TImageList;
 begin
   if FNormalImages <> nil then begin
-    // Keep all main-form controls using the shared icon lists on the same scaled set.
-    for i:=0 to ComponentCount - 1 do begin
-      C:=Components[i];
-      if C is TMenu then begin
-        if (TMenu(C).Images = ImageList16) or
-           (TMenu(C).Images = ImageList32) or
-           (TMenu(C).Images = FNormalImages) then begin
-          TMenu(C).Images:=FNormalImages;
-          TMenu(C).ImagesWidth:=FNormalImages.Width;
-        end;
-      end
-      else if C is TToolBar then begin
-        if (C <> MainToolBar) and
-           ((TToolBar(C).Images = ImageList16) or
-            (TToolBar(C).Images = ImageList32) or
-            (TToolBar(C).Images = FNormalImages) or
-            (TToolBar(C).Images = FBigImages)) then begin
-          TToolBar(C).Images:=FNormalImages;
-          TToolBar(C).ImagesWidth:=FNormalImages.Width;
-        end;
-      end
-      else if C is TCustomTabControl then begin
-        if (TCustomTabControl(C).Images = ImageList16) or
-           (TCustomTabControl(C).Images = ImageList32) or
-           (TCustomTabControl(C).Images = FNormalImages) then begin
-          TCustomTabControl(C).Images:=FNormalImages;
-          TCustomTabControl(C).ImagesWidth:=FNormalImages.Width;
-        end;
-      end
-      else if C is TVarGrid then begin
-        if (TVarGrid(C).Images = ImageList16) or
-           (TVarGrid(C).Images = ImageList32) or
-           (TVarGrid(C).Images = FNormalImages) then begin
-          TVarGrid(C).Images:=FNormalImages;
-        end;
-      end;
-    end;
+    SharedImages:=FNormalImages;
+{$ifdef darwin}
+    if FListSymbols <> nil then
+      SharedImages:=FListSymbols;
+{$endif darwin}
+    AssignSharedImages(SharedImages);
 
     FSlowResponse.Images:=FNormalImages;
     FSlowResponse.Width:=ScaleInt(24);
