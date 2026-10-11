@@ -2400,6 +2400,10 @@ procedure TMainForm.FormResize(Sender: TObject);
 begin
   if panReconnect.Visible then
     CenterReconnectWindow;
+  // A hidden right aligned control keeps its old position, and the toolbar
+  // moves the search box past it when they overlap. Keep it at the right edge.
+  if (FSlowResponse <> nil) and not FSlowResponse.Visible then
+    FSlowResponse.Left:=MainToolBar.ClientWidth - FSlowResponse.Width;
 end;
 
 procedure TMainForm.FormShow(Sender: TObject);
