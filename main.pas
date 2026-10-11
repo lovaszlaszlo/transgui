@@ -728,7 +728,11 @@ type
 {$ifdef darwin}
     // System symbol icons of the main toolbar: normal and big size.
     FToolbarSymbols: array[boolean] of TImageList;
-    FSearchCancelImage: integer;
+    // Search cancel icon in the size matching the normal and the big toolbar.
+    FSearchSymbols: array[boolean] of TImageList;
+    // System symbol icons of the filter list.
+    FFilterSymbols: TImageList;
+    FToolTipsState: string;
 {$endif darwin}
     FDetailsWaitStart: TDateTime;
     FMainFormShown: boolean;
@@ -809,8 +813,12 @@ type
     procedure ThemeChanged(Sender: TObject);
 {$ifdef darwin}
     procedure AppearanceChanged;
-    function CreateToolbarSymbols(ASize: integer; AFallback: TImageList): TImageList;
+    function CreateSymbolList(ASize: integer): TImageList;
+    function AddSymbolImage(AList: TImageList; const AName: string): boolean;
+    function CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AForFilter: boolean): TImageList;
+    procedure UpdateToolbarToolTips;
     procedure BuildToolbarSymbols;
+    procedure LayoutSearchBox;
 {$endif darwin}
     procedure CheckClipboardLink;
     procedure CenterDetailsWait;
@@ -1739,8 +1747,30 @@ const
     (Index: 41; Name: 'arrow.down.circle'),
     (Index: 43; Name: 'gearshape')
   );
+  // Filter list icons replaced by macOS system symbols, by image index.
+  FilterSymbolNames: array[0..10] of record
+    Index: integer;
+    Name: string;
+  end = (
+    (Index: 5;  Name: 'antenna.radiowaves.left.and.right'),  // tracker
+    (Index: 9;  Name: 'arrow.down.circle'),                  // imgDown
+    (Index: 10; Name: 'checkmark.circle'),                   // imgSeed
+    (Index: 13; Name: 'exclamationmark.triangle'),           // imgError
+    (Index: 15; Name: 'moon.zzz'),                           // imgInactive
+    (Index: 19; Name: 'tray.full'),                          // imgAll
+    (Index: 20; Name: 'arrow.up.arrow.down.circle'),         // imgActive
+    (Index: 22; Name: 'folder'),                             // download folder
+    (Index: 29; Name: 'pause.circle'),                       // imgStopped
+    (Index: 42; Name: 'clock'),                              // imgWaiting
+    (Index: 44; Name: 'tag')                                 // label
+  );
   SearchSymbolName = 'magnifyingglass';
   SearchCancelSymbolName = 'xmark.circle.fill';
+  // Search box metrics at 100% interface scale: normal and big toolbar.
+  SearchIconSize = 16;
+  SearchIconSizeBig = 24;
+  SearchFontHeight = 11;
+  SearchFontHeightBig = 16;
 
 function ToolbarSymbolColor: TColor;
 begin
@@ -1752,87 +1782,93 @@ begin
     Result:=$D8D8D8;
 end;
 
-function TMainForm.CreateToolbarSymbols(ASize: integer; AFallback: TImageList): TImageList;
+function TMainForm.CreateSymbolList(ASize: integer): TImageList;
+begin
+  Result:=TImageList.Create(Self);
+  Result.Width:=ASize;
+  Result.Height:=ASize;
+  Result.Scaled:=True;
+  // The double size images keep the icons sharp on Retina displays.
+  Result.RegisterResolutions([ASize, ASize*2]);
+end;
+
+function TMainForm.AddSymbolImage(AList: TImageList; const AName: string): boolean;
 var
-  SymbolColor: TColor;
-  List: TImageList;
-
-  function AddSymbol(const AName: string): boolean;
-  var
-    Small, Large: TBitmap;
-    Images: array[0..1] of TCustomBitmap;
-  begin
-    Result:=False;
-    Large:=nil;
-    Small:=CreateSymbolBitmap(AName, ASize, SymbolColor);
-    try
-      if Small <> nil then
-        Large:=CreateSymbolBitmap(AName, ASize*2, SymbolColor);
-      if Large <> nil then begin
-        // The double size image keeps the icon sharp on Retina displays.
-        Images[0]:=Small;
-        Images[1]:=Large;
-        List.AddMultipleResolutions(Images);
-        Result:=True;
-      end;
-    finally
-      Small.Free;
-      Large.Free;
+  Small, Large: TBitmap;
+  Images: array[0..1] of TCustomBitmap;
+begin
+  Result:=False;
+  Large:=nil;
+  Small:=CreateSymbolBitmap(AName, AList.Width, ToolbarSymbolColor);
+  try
+    if Small <> nil then
+      Large:=CreateSymbolBitmap(AName, AList.Width*2, ToolbarSymbolColor);
+    if Large <> nil then begin
+      Images[0]:=Small;
+      Images[1]:=Large;
+      AList.AddMultipleResolutions(Images);
+      Result:=True;
     end;
+  finally
+    Small.Free;
+    Large.Free;
   end;
+end;
 
+function TMainForm.CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AForFilter: boolean): TImageList;
 var
   i, j: integer;
   SymbolName: string;
   Bmp: TBitmap;
+  HasSymbols: boolean;
 begin
-  SymbolColor:=ToolbarSymbolColor;
-  List:=TImageList.Create(Self);
+  HasSymbols:=False;
+  Result:=CreateSymbolList(ASize);
   try
-    List.Width:=ASize;
-    List.Height:=ASize;
-    List.Scaled:=True;
-    List.RegisterResolutions([ASize, ASize*2]);
     for i:=0 to AFallback.Count - 1 do begin
       SymbolName:='';
-      for j:=Low(ToolbarSymbolNames) to High(ToolbarSymbolNames) do
-        if ToolbarSymbolNames[j].Index = i then
-          SymbolName:=ToolbarSymbolNames[j].Name;
-      if (SymbolName <> '') and AddSymbol(SymbolName) then
+      if AForFilter then begin
+        for j:=Low(FilterSymbolNames) to High(FilterSymbolNames) do
+          if FilterSymbolNames[j].Index = i then
+            SymbolName:=FilterSymbolNames[j].Name;
+      end
+      else
+        for j:=Low(ToolbarSymbolNames) to High(ToolbarSymbolNames) do
+          if ToolbarSymbolNames[j].Index = i then
+            SymbolName:=ToolbarSymbolNames[j].Name;
+      if (SymbolName <> '') and AddSymbolImage(Result, SymbolName) then begin
+        HasSymbols:=True;
         continue;
-      if i = 0 then
-        // No system symbols on this macOS version.
-        raise Exception.Create('System symbols are not available.');
+      end;
       Bmp:=TBitmap.Create;
       try
         AFallback.GetBitmap(i, Bmp);
-        List.Add(Bmp, nil);
+        Result.Add(Bmp, nil);
       finally
         Bmp.Free;
       end;
     end;
-    FSearchCancelImage:=List.Count;
-    if not AddSymbol(SearchCancelSymbolName) then
-      FSearchCancelImage:=3;
+    if not HasSymbols then
+      // No system symbols on this macOS version.
+      FreeAndNil(Result);
   except
-    FreeAndNil(List);
+    FreeAndNil(Result);
   end;
-  Result:=List;
 end;
 
 procedure TMainForm.BuildToolbarSymbols;
 var
   Big: boolean;
   Fallback: TImageList;
-  Bmp: TBitmap;
   i: integer;
 begin
   for Big:=False to True do begin
     if MainToolBar.Images = FToolbarSymbols[Big] then
       MainToolBar.Images:=nil;
-    if SearchToolbar.Images = FToolbarSymbols[Big] then
+    if SearchToolbar.Images = FSearchSymbols[Big] then
       SearchToolbar.Images:=nil;
     FreeAndNil(FToolbarSymbols[Big]);
+    FreeAndNil(FSearchSymbols[Big]);
     if Big then begin
       Fallback:=FBigImages;
       if Fallback = nil then
@@ -1845,50 +1881,121 @@ begin
         Fallback:=ImageList16;
       i:=ScaleInt(ImageList16.Width);
     end;
-    FToolbarSymbols[Big]:=CreateToolbarSymbols(i, Fallback);
+    FToolbarSymbols[Big]:=CreateToolbarSymbols(i, Fallback, False);
+    if not Big then begin
+      if lvFilter.Images = FFilterSymbols then
+        lvFilter.Images:=Fallback;
+      FreeAndNil(FFilterSymbols);
+      FFilterSymbols:=CreateToolbarSymbols(i, Fallback, True);
+    end;
+    if FToolbarSymbols[Big] <> nil then begin
+      // The search box icons grow with the toolbar, but stay smaller than its buttons.
+      if Big then
+        i:=ScaleInt(SearchIconSizeBig)
+      else
+        i:=ScaleInt(SearchIconSize);
+      FSearchSymbols[Big]:=CreateSymbolList(i);
+      if not AddSymbolImage(FSearchSymbols[Big], SearchCancelSymbolName) then
+        FreeAndNil(FSearchSymbols[Big]);
+    end;
   end;
+end;
 
-  if FToolbarSymbols[False] = nil then
+procedure TMainForm.UpdateToolbarToolTips;
+var
+  i, n: integer;
+  C: TControl;
+  Rects: array of TRect;
+  Texts: array of string;
+  State: string;
+begin
+  // LCL hints do not appear for toolbar buttons on macOS: use native tooltips.
+  if not MainToolBar.HandleAllocated then
+    exit;
+  SetLength(Rects, MainToolBar.ControlCount);
+  SetLength(Texts, MainToolBar.ControlCount);
+  n:=0;
+  State:='';
+  for i:=0 to MainToolBar.ControlCount - 1 do begin
+    C:=MainToolBar.Controls[i];
+    if not (C is TToolButton) or not C.Visible or (GetShortHint(C.Hint) = '') then
+      continue;
+    Rects[n]:=C.BoundsRect;
+    Texts[n]:=GetShortHint(C.Hint);
+    State:=State + Format('%d,%d,%d,%d,%s;', [C.Left, C.Top, C.Width, C.Height, Texts[n]]);
+    Inc(n);
+  end;
+  if State = FToolTipsState then
+    exit;
+  FToolTipsState:=State;
+  SetLength(Rects, n);
+  SetLength(Texts, n);
+  MainToolBar.ShowHint:=False;
+  SetViewToolTips(MainToolBar.Handle, Rects, Texts);
+end;
+
+procedure TMainForm.LayoutSearchBox;
+var
+  Big: boolean;
+  IconSize: integer;
+  Bmp: TBitmap;
+begin
+  Big:=acBigToolbar.Checked;
+  if FSearchSymbols[Big] = nil then
     exit;
 
-  // Search box: the icon, the edit at its natural height and the cancel button,
-  // all centered vertically, whatever the toolbar height is.
-  i:=FToolbarSymbols[False].Width;
-  Bmp:=CreateSymbolBitmap(SearchSymbolName, i*2, ToolbarSymbolColor);
-  if Bmp <> nil then
-    try
-      imgSearch.Picture.Assign(Bmp);
-      imgSearch.Stretch:=True;
-      imgSearch.Proportional:=True;
-    finally
-      Bmp.Free;
-    end;
-  imgSearch.Align:=alNone;
-  imgSearch.Anchors:=[akLeft, akTop];
-  imgSearch.SetBounds(0, 0, i, i);
-  imgSearch.AnchorSide[akLeft].Control:=panSearch;
-  imgSearch.AnchorSide[akLeft].Side:=asrLeft;
-  imgSearch.BorderSpacing.Left:=ScaleInt(4);
-  imgSearch.AnchorVerticalCenterTo(panSearch);
+  // The icon, the edit and the cancel button are centered vertically in the
+  // toolbar; their size follows the interface scale and the toolbar size.
+  IconSize:=FSearchSymbols[Big].Width;
+  panSearch.DisableAlign;
+  try
+    Bmp:=CreateSymbolBitmap(SearchSymbolName, IconSize*2, ToolbarSymbolColor);
+    if Bmp <> nil then
+      try
+        imgSearch.Picture.Assign(Bmp);
+        imgSearch.Stretch:=True;
+        imgSearch.Proportional:=True;
+      finally
+        Bmp.Free;
+      end;
+    imgSearch.Align:=alNone;
+    imgSearch.Anchors:=[akLeft, akTop];
+    imgSearch.SetBounds(0, 0, IconSize, IconSize);
+    imgSearch.AnchorSide[akLeft].Control:=panSearch;
+    imgSearch.AnchorSide[akLeft].Side:=asrLeft;
+    imgSearch.BorderSpacing.Left:=ScaleInt(4);
+    imgSearch.AnchorVerticalCenterTo(panSearch);
 
-  SearchToolbar.Align:=alNone;
-  SearchToolbar.Anchors:=[akRight, akTop];
-  SearchToolbar.EdgeBorders:=[];
-  SearchToolbar.ButtonWidth:=i + ScaleInt(6);
-  SearchToolbar.ButtonHeight:=i + ScaleInt(6);
-  SearchToolbar.SetBounds(0, 0, SearchToolbar.ButtonWidth + 2, SearchToolbar.ButtonHeight);
-  SearchToolbar.AnchorSide[akRight].Control:=panSearch;
-  SearchToolbar.AnchorSide[akRight].Side:=asrRight;
-  SearchToolbar.AnchorVerticalCenterTo(panSearch);
+    SearchToolbar.Align:=alNone;
+    SearchToolbar.Anchors:=[akRight, akTop];
+    SearchToolbar.EdgeBorders:=[];
+    SearchToolbar.Images:=FSearchSymbols[Big];
+    SearchToolbar.ImagesWidth:=IconSize;
+    tbSearchCancel.ImageIndex:=0;
+    SearchToolbar.ButtonWidth:=IconSize + ScaleInt(6);
+    SearchToolbar.ButtonHeight:=IconSize + ScaleInt(6);
+    SearchToolbar.SetBounds(0, 0, SearchToolbar.ButtonWidth + 2, SearchToolbar.ButtonHeight);
+    SearchToolbar.AnchorSide[akRight].Control:=panSearch;
+    SearchToolbar.AnchorSide[akRight].Side:=asrRight;
+    SearchToolbar.AnchorVerticalCenterTo(panSearch);
 
-  edSearch.Align:=alNone;
-  edSearch.Anchors:=[akLeft, akRight, akTop];
-  edSearch.AnchorSide[akLeft].Control:=imgSearch;
-  edSearch.AnchorSide[akLeft].Side:=asrRight;
-  edSearch.BorderSpacing.Left:=ScaleInt(4);
-  edSearch.AnchorSide[akRight].Control:=SearchToolbar;
-  edSearch.AnchorSide[akRight].Side:=asrLeft;
-  edSearch.AnchorVerticalCenterTo(panSearch);
+    if Big then
+      edSearch.Font.Height:=ScaleInt(-SearchFontHeightBig)
+    else
+      edSearch.Font.Height:=ScaleInt(-SearchFontHeight);
+    edSearch.Align:=alNone;
+    edSearch.Anchors:=[akLeft, akRight, akTop];
+    edSearch.AutoSize:=False;
+    edSearch.Height:=Abs(edSearch.Font.Height) + ScaleInt(11);
+    edSearch.AnchorSide[akLeft].Control:=imgSearch;
+    edSearch.AnchorSide[akLeft].Side:=asrRight;
+    edSearch.BorderSpacing.Left:=ScaleInt(4);
+    edSearch.AnchorSide[akRight].Control:=SearchToolbar;
+    edSearch.AnchorSide[akRight].Side:=asrLeft;
+    edSearch.AnchorVerticalCenterTo(panSearch);
+  finally
+    panSearch.EnableAlign;
+  end;
 end;
 {$endif darwin}
 
@@ -1974,11 +2081,9 @@ begin
 {$ifdef darwin}
   if FToolbarSymbols[acBigToolbar.Checked] <> nil then
     ToolbarImages:=FToolbarSymbols[acBigToolbar.Checked];
-  if FToolbarSymbols[False] <> nil then begin
-    SearchToolbar.Images:=FToolbarSymbols[False];
-    SearchToolbar.ImagesWidth:=FToolbarSymbols[False].Width;
-    tbSearchCancel.ImageIndex:=FSearchCancelImage;
-  end;
+  LayoutSearchBox;
+  if FFilterSymbols <> nil then
+    lvFilter.Images:=FFilterSymbols;
 {$endif darwin}
   MainToolBar.Images:=ToolbarImages;
   MainToolBar.ImagesWidth:=ToolbarImages.Width;
@@ -5554,6 +5659,9 @@ begin
     end;
 
     CheckAddTorrents;
+{$ifdef darwin}
+    UpdateToolbarToolTips;
+{$endif darwin}
 
     if RpcObj.Connected then
       FReconnectTimeOut:=0
@@ -6224,6 +6332,8 @@ begin
         Ini.WriteBool(AName, Format('Visible%d', [i]), Visible);
       end;
     end;
+  // The widths are stored in pixels: remember the interface scale they belong to.
+  Ini.WriteInteger(AName, 'WidthScale', IntfScale);
   if LV.SortColumn >= 0 then begin
     Ini.WriteInteger(AName, 'SortColumn', LV.SortColumn);
     Ini.WriteInteger(AName, 'SortOrder', integer(LV.SortOrder));
@@ -6232,8 +6342,12 @@ end;
 
 procedure TMainForm.LoadColumns(LV: TVarGrid; const AName: string; FullInfo: boolean);
 var
-  i, j, ColId: integer;
+  i, j, ColId, SavedScale: integer;
 begin
+  // Widths saved before this setting existed are treated as unscaled.
+  SavedScale:=Ini.ReadInteger(AName, 'WidthScale', 100);
+  if SavedScale <= 0 then
+    SavedScale:=IntfScale;
   LV.Columns.BeginUpdate;
   try
     for i:=0 to LV.Columns.Count - 1 do begin
@@ -6246,7 +6360,9 @@ begin
               Index:=Ini.ReadInteger(AName, Format('Index%d', [i]), Index);
               Visible:=Ini.ReadBool(AName, Format('Visible%d', [i]), Visible);
             end;
-            Width:=Ini.ReadInteger(AName, Format('Width%d', [i]), Width);
+            if Ini.ValueExists(AName, Format('Width%d', [i])) then
+              // Follow the interface scale if it changed since the widths were saved.
+              Width:=Ini.ReadInteger(AName, Format('Width%d', [i]), Width)*IntfScale div SavedScale;
             break;
           end;
     end;

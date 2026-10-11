@@ -717,7 +717,9 @@ begin
           DrawGridCheckboxBitmaps(aCol, aRow, R, ca.State);
         end;
         if (ca.ImageIndex <> -1) and Assigned(FImages) then begin
-          FImages.Draw(Canvas, aRect.Left + 2, (aRect.Bottom + aRect.Top - FImages.Height) div 2, ca.ImageIndex, gdeNormal);
+          // Lets a scaled image list pick its high resolution image on HiDPI displays.
+          FImages.DrawForControl(Canvas, aRect.Left + 2, (aRect.Bottom + aRect.Top - FImages.Height) div 2,
+            ca.ImageIndex, FImages.Width, Self, gdeNormal);
           Inc(aRect.Left, FImages.Width + 2);
         end;
         if ca.Text <> '' then begin

@@ -42,6 +42,10 @@ type
 // Pass nil to stop the notifications.
 procedure SetAppearanceChangedHandler(AHandler: TAppearanceChangedEvent);
 
+// Replaces the native tooltips of a control. AHandle is the Handle of a TWinControl,
+// ARects are in its client coordinates. Only one control can have such tooltips.
+procedure SetViewToolTips(AHandle: PtrUInt; const ARects: array of TRect; const ATexts: array of string);
+
 implementation
 
 uses
@@ -117,6 +121,41 @@ begin
   AppearanceNotifier:=TAppearanceNotifier.Create;
   AppearanceObserver:=TAppearanceObserver.alloc.init;
   NSApp.addObserver_forKeyPath_options_context(AppearanceObserver, NSSTR(AppearanceKeyPath), 0, nil);
+end;
+
+var
+  ToolTipTexts: NSMutableArray;  // tooltip owners are not retained by the view
+
+procedure SetViewToolTips(AHandle: PtrUInt; const ARects: array of TRect; const ATexts: array of string);
+var
+  v: NSView;
+  i: integer;
+  r: NSRect;
+  txt: NSString;
+begin
+  if AHandle = 0 then
+    exit;
+  v:=NSView(AHandle);
+  v.removeAllToolTips;
+  if ToolTipTexts = nil then
+    ToolTipTexts:=NSMutableArray.alloc.init
+  else
+    ToolTipTexts.removeAllObjects;
+  for i:=0 to High(ARects) do begin
+    if i > High(ATexts) then
+      break;
+    r.origin.x:=ARects[i].Left;
+    r.size.width:=ARects[i].Right - ARects[i].Left;
+    r.size.height:=ARects[i].Bottom - ARects[i].Top;
+    if v.isFlipped then
+      r.origin.y:=ARects[i].Top
+    else
+      r.origin.y:=v.bounds.size.height - ARects[i].Bottom;
+    txt:=NSString.stringWithUTF8String(PChar(ATexts[i]));
+    ToolTipTexts.addObject(txt);
+    // An NSString owner is shown as the tooltip text.
+    v.addToolTipRect_owner_userData(r, txt, nil);
+  end;
 end;
 
 const
