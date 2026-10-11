@@ -50,6 +50,12 @@ const
   AppVersion = '6.0';
   AppArch = {$if defined(darwin) and defined(cpuaarch64)}'arm64'{$else}{$I %FPCTARGETCPU}{$endif};
 
+  // Main toolbar sizes.
+  ToolbarSizeSmall = 0;
+  ToolbarSizeMedium = 1;
+  ToolbarSizeLarge = 2;
+  MediumToolbarIconSize = 24;
+
 resourcestring
   sAll = 'All torrents';
   sWaiting = 'Waiting';
@@ -99,6 +105,9 @@ resourcestring
   sTrackerUpdating = 'Updating';
   sRestartRequired = 'You need to restart the application to apply changes.';
   sRestartNow = 'You need to restart the application to apply changes. Restart now?';
+  sToolbarSmall = 'Small toolbar';
+  sToolbarMedium = 'Medium toolbar';
+  sToolbarLarge = 'Large toolbar';
   sRemoveTorrentData = 'Are you sure to remove torrent ''%s'' and all associated DATA?';
   sRemoveTorrentDataMulti = 'Are you sure to remove %d selected torrents and all their associated DATA?';
   sRemoveTorrent = 'Are you sure to remove torrent ''%s''?';
@@ -258,11 +267,9 @@ type
     acAdvEditTrackers: TAction;
     acFilterPane: TAction;
     acMenuShow :  TAction;
-    acBigToolbar: TAction;
     acSetLabels: TAction;
     acLabelGrouping: TAction;
     ImageList32: TImageList;
-    MenuItem103: TMenuItem;
     MenuItem104: TMenuItem;
     MenuItem105: TMenuItem;
     MenuItem106: TMenuItem;
@@ -552,7 +559,6 @@ type
     procedure acAddTrackerExecute(Sender: TObject);
     procedure acAdvEditTrackersExecute(Sender: TObject);
     procedure acAltSpeedExecute(Sender: TObject);
-    procedure acBigToolbarExecute(Sender: TObject);
     procedure acCheckNewVersionExecute(Sender: TObject);
     procedure acConnectExecute(Sender: TObject);
     procedure acConnOptionsExecute(Sender: TObject);
@@ -726,11 +732,14 @@ type
     FDetailsWait: TProgressImage;
     FNormalImages: TImageList;
     FBigImages: TImageList;
+    FMediumImages: TImageList;
+    // Main toolbar size: ToolbarSizeSmall, ToolbarSizeMedium or ToolbarSizeLarge.
+    FToolbarSize: integer;
 {$ifdef darwin}
     // System symbol icons of the main toolbar: normal and big size.
-    FToolbarSymbols: array[boolean] of TImageList;
-    // Search cancel icon in the size matching the normal and the big toolbar.
-    FSearchSymbols: array[boolean] of TImageList;
+    FToolbarSymbols: array[0..2] of TImageList;
+    // Search cancel icon in the size matching each toolbar size.
+    FSearchSymbols: array[0..2] of TImageList;
     // System symbol icons of the filter list.
     FFilterSymbols: TImageList;
     FToolTipsState: string;
@@ -813,6 +822,8 @@ type
     function FixSeparators(const p: string): string;
     function MapRemoteToLocal(const RemotePath: string): string;
     procedure CheckAddTorrents;
+    procedure BuildMediumImages;
+    procedure SetToolbarSize(ASize: integer);
     procedure UpdateThemeColors;
     procedure ThemeChanged(Sender: TObject);
 {$ifdef darwin}
@@ -1732,6 +1743,34 @@ begin
   end;
 end;
 
+procedure TMainForm.BuildMediumImages;
+begin
+  if FMediumImages <> nil then
+    exit;
+  try
+    FMediumImages:=CreateScaledImages(ScaleInt(MediumToolbarIconSize));
+  except
+    on E: Exception do begin
+      DebugLn('Failed to build medium icon list: ' + E.Message);
+      // The medium toolbar falls back to the small icons.
+      FMediumImages:=nil;
+    end;
+  end;
+end;
+
+procedure TMainForm.SetToolbarSize(ASize: integer);
+begin
+  if (ASize < ToolbarSizeSmall) or (ASize > ToolbarSizeLarge) then
+    ASize:=ToolbarSizeSmall;
+  if ASize = FToolbarSize then
+    exit;
+  FToolbarSize:=ASize;
+  ApplyIconLayout;
+  Ini.WriteInteger('MainForm', 'ToolbarSize', FToolbarSize);
+  // Older versions know only the big toolbar switch.
+  Ini.WriteBool('MainForm', 'BigToolbar', FToolbarSize = ToolbarSizeLarge);
+end;
+
 {$ifdef darwin}
 const
   // Main toolbar icons replaced by macOS system symbols, by image index.
@@ -1770,11 +1809,9 @@ const
   );
   SearchSymbolName = 'magnifyingglass';
   SearchCancelSymbolName = 'xmark.circle.fill';
-  // Search box metrics at 100% interface scale: normal and big toolbar.
-  SearchIconSize = 16;
-  SearchIconSizeBig = 24;
-  SearchFontHeight = 11;
-  SearchFontHeightBig = 16;
+  // Search box metrics at 100% interface scale for each toolbar size.
+  SearchIconSizes: array[0..2] of integer = (16, 20, 24);
+  SearchFontHeights: array[0..2] of integer = (11, 13, 16);
 
 function ToolbarSymbolColor: TColor;
 begin
@@ -1862,45 +1899,48 @@ end;
 
 procedure TMainForm.BuildToolbarSymbols;
 var
-  Big: boolean;
+  Size, i: integer;
   Fallback: TImageList;
-  i: integer;
 begin
-  for Big:=False to True do begin
-    if MainToolBar.Images = FToolbarSymbols[Big] then
+  for Size:=ToolbarSizeSmall to ToolbarSizeLarge do begin
+    if MainToolBar.Images = FToolbarSymbols[Size] then
       MainToolBar.Images:=nil;
-    if SearchToolbar.Images = FSearchSymbols[Big] then
+    if SearchToolbar.Images = FSearchSymbols[Size] then
       SearchToolbar.Images:=nil;
-    FreeAndNil(FToolbarSymbols[Big]);
-    FreeAndNil(FSearchSymbols[Big]);
-    if Big then begin
-      Fallback:=FBigImages;
-      if Fallback = nil then
-        Fallback:=ImageList32;
-      i:=ScaleInt(ImageList32.Width);
-    end
-    else begin
-      Fallback:=FNormalImages;
-      if Fallback = nil then
-        Fallback:=ImageList16;
-      i:=ScaleInt(ImageList16.Width);
+    FreeAndNil(FToolbarSymbols[Size]);
+    FreeAndNil(FSearchSymbols[Size]);
+    case Size of
+      ToolbarSizeLarge: begin
+        Fallback:=FBigImages;
+        if Fallback = nil then
+          Fallback:=ImageList32;
+        i:=ScaleInt(ImageList32.Width);
+      end;
+      ToolbarSizeMedium: begin
+        Fallback:=FMediumImages;
+        if Fallback = nil then
+          Fallback:=ImageList32;
+        i:=ScaleInt(MediumToolbarIconSize);
+      end;
+      else begin
+        Fallback:=FNormalImages;
+        if Fallback = nil then
+          Fallback:=ImageList16;
+        i:=ScaleInt(ImageList16.Width);
+      end;
     end;
-    FToolbarSymbols[Big]:=CreateToolbarSymbols(i, Fallback, False);
-    if not Big then begin
+    FToolbarSymbols[Size]:=CreateToolbarSymbols(i, Fallback, False);
+    if Size = ToolbarSizeSmall then begin
       if lvFilter.Images = FFilterSymbols then
         lvFilter.Images:=Fallback;
       FreeAndNil(FFilterSymbols);
       FFilterSymbols:=CreateToolbarSymbols(i, Fallback, True);
     end;
-    if FToolbarSymbols[Big] <> nil then begin
+    if FToolbarSymbols[Size] <> nil then begin
       // The search box icons grow with the toolbar, but stay smaller than its buttons.
-      if Big then
-        i:=ScaleInt(SearchIconSizeBig)
-      else
-        i:=ScaleInt(SearchIconSize);
-      FSearchSymbols[Big]:=CreateSymbolList(i);
-      if not AddSymbolImage(FSearchSymbols[Big], SearchCancelSymbolName) then
-        FreeAndNil(FSearchSymbols[Big]);
+      FSearchSymbols[Size]:=CreateSymbolList(ScaleInt(SearchIconSizes[Size]));
+      if not AddSymbolImage(FSearchSymbols[Size], SearchCancelSymbolName) then
+        FreeAndNil(FSearchSymbols[Size]);
     end;
   end;
 end;
@@ -1940,17 +1980,15 @@ end;
 
 procedure TMainForm.LayoutSearchBox;
 var
-  Big: boolean;
   IconSize: integer;
   Bmp: TBitmap;
 begin
-  Big:=acBigToolbar.Checked;
-  if FSearchSymbols[Big] = nil then
+  if FSearchSymbols[FToolbarSize] = nil then
     exit;
 
   // The icon, the edit and the cancel button are centered vertically in the
   // toolbar; their size follows the interface scale and the toolbar size.
-  IconSize:=FSearchSymbols[Big].Width;
+  IconSize:=FSearchSymbols[FToolbarSize].Width;
   panSearch.DisableAlign;
   try
     Bmp:=CreateSymbolBitmap(SearchSymbolName, IconSize*2, ToolbarSymbolColor);
@@ -1973,7 +2011,7 @@ begin
     SearchToolbar.Align:=alNone;
     SearchToolbar.Anchors:=[akRight, akTop];
     SearchToolbar.EdgeBorders:=[];
-    SearchToolbar.Images:=FSearchSymbols[Big];
+    SearchToolbar.Images:=FSearchSymbols[FToolbarSize];
     SearchToolbar.ImagesWidth:=IconSize;
     tbSearchCancel.ImageIndex:=0;
     SearchToolbar.ButtonWidth:=IconSize + ScaleInt(6);
@@ -1983,10 +2021,7 @@ begin
     SearchToolbar.AnchorSide[akRight].Side:=asrRight;
     SearchToolbar.AnchorVerticalCenterTo(panSearch);
 
-    if Big then
-      edSearch.Font.Height:=ScaleInt(-SearchFontHeightBig)
-    else
-      edSearch.Font.Height:=ScaleInt(-SearchFontHeight);
+    edSearch.Font.Height:=ScaleInt(-SearchFontHeights[FToolbarSize]);
     edSearch.Align:=alNone;
     edSearch.Anchors:=[akLeft, akRight, akTop];
     edSearch.AutoSize:=False;
@@ -2057,7 +2092,7 @@ begin
     panDetailsWait.Height:=FDetailsWait.Height;
   end;
 
-  if acBigToolbar.Checked then begin
+  if FToolbarSize = ToolbarSizeLarge then begin
     if FBigImages <> nil then begin
       ToolbarImages:=FBigImages;
       ToolButtonSize:=Ini.ReadInteger('MainForm', 'BigToolBarHeight', 64);
@@ -2068,6 +2103,10 @@ begin
       ToolbarImages:=ImageList32;
       ToolButtonSize:=Ini.ReadInteger('MainForm', 'BigToolBarHeight', 64);
     end;
+  end
+  else if (FToolbarSize = ToolbarSizeMedium) and (FMediumImages <> nil) then begin
+    ToolbarImages:=FMediumImages;
+    ToolButtonSize:=ToolbarImages.Height + ScaleInt(14);
   end
   else begin
     if FNormalImages <> nil then begin
@@ -2083,8 +2122,11 @@ begin
   end;
 
 {$ifdef darwin}
-  if FToolbarSymbols[acBigToolbar.Checked] <> nil then
-    ToolbarImages:=FToolbarSymbols[acBigToolbar.Checked];
+  if FToolbarSymbols[FToolbarSize] <> nil then begin
+    ToolbarImages:=FToolbarSymbols[FToolbarSize];
+    if FToolbarSize = ToolbarSizeMedium then
+      ToolButtonSize:=ToolbarImages.Height + ScaleInt(14);
+  end;
   LayoutSearchBox;
   if FFilterSymbols <> nil then
     lvFilter.Images:=FFilterSymbols;
@@ -2286,8 +2328,13 @@ begin
     acMenuShow.Execute;
   if Ini.ReadBool('MainForm', 'Toolbar', acToolbarShow.Checked) <> acToolbarShow.Checked then
     acToolbarShow.Execute;
-  acBigToolbar.Checked:=Ini.ReadBool('MainForm', 'BigToolbar',
-    acBigToolbar.Checked);
+  FToolbarSize:=Ini.ReadInteger('MainForm', 'ToolbarSize', -1);
+  if (FToolbarSize < ToolbarSizeSmall) or (FToolbarSize > ToolbarSizeLarge) then
+    // Setting of the versions with only a big toolbar switch.
+    if Ini.ReadBool('MainForm', 'BigToolbar', False) then
+      FToolbarSize:=ToolbarSizeLarge
+    else
+      FToolbarSize:=ToolbarSizeSmall;
 
   FFromNow := Ini.ReadBool('MainForm','FromNow',false);
   FWatchLocalFolder := Ini.ReadString('Interface','WatchLocalFolder','');
@@ -2409,6 +2456,7 @@ begin
   {$endif windows}
 
   BuildScaledImages;
+  BuildMediumImages;
 {$ifdef darwin}
   BuildToolbarSymbols;
 {$endif darwin}
@@ -2840,7 +2888,11 @@ begin
     cbDeleteTorrentFile.Checked:=Ini.ReadBool('Interface', 'DeleteTorrentFile', False);
     cbLinksFromClipboard.Checked:=Ini.ReadBool('Interface', 'LinksFromClipboard', False);
     edIntfScale.Value:=ReadIntfScale(IntfScale);
-    cbBigToolbar.Checked:=acBigToolbar.Checked;
+    cbToolbarSize.Items.Clear;
+    cbToolbarSize.Items.Add(sToolbarSmall);
+    cbToolbarSize.Items.Add(sToolbarMedium);
+    cbToolbarSize.Items.Add(sToolbarLarge);
+    cbToolbarSize.ItemIndex:=FToolbarSize;
     cbCheckNewVersion.Checked:=Ini.ReadBool('Interface', 'CheckNewVersion', False);
     edCheckVersionDays.Value:=Ini.ReadInteger('Interface', 'CheckNewVersionDays', 5);
     cbCheckNewVersionClick(nil);
@@ -2876,8 +2928,8 @@ begin
         FPendingClipboardTorrents.Clear;
 
       Ini.WriteInteger('Interface', 'Scaling', edIntfScale.Value);
-      if cbBigToolbar.Checked <> acBigToolbar.Checked then
-        acBigToolbar.Execute;
+      if cbToolbarSize.ItemIndex >= 0 then
+        SetToolbarSize(cbToolbarSize.ItemIndex);
 
       Ini.WriteBool('Interface', 'CheckNewVersion', cbCheckNewVersion.Checked);
       Ini.WriteInteger('Interface', 'CheckNewVersionDays', edCheckVersionDays.Value);
@@ -2940,13 +2992,6 @@ begin
   end;
   RpcObj.RequestRefresh([rtSession]);
   AppNormal;
-end;
-
-procedure TMainForm.acBigToolbarExecute(Sender: TObject);
-begin
-  acBigToolbar.Checked:=not acBigToolbar.Checked;
-  ApplyIconLayout;
-  Ini.WriteBool('MainForm', 'BigToolbar', acBigToolbar.Checked);
 end;
 
 procedure TMainForm.acCheckNewVersionExecute(Sender: TObject);

@@ -52,7 +52,7 @@ type
     cbTrayClose: TCheckBox;
     cbTrayIconAlways: TCheckBox;
     cbTrayMinimize: TCheckBox;
-    cbBigToolbar: TCheckBox;
+    cbToolbarSize: TComboBox;
     cbCheckNewVersion: TCheckBox;
     cbCalcAvg: TCheckBox;
     cbRegExt: TCheckBox;

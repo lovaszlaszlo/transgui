@@ -2040,10 +2040,6 @@ inherited MainForm: TMainForm
         Action = acToolbarShow
         ShortCut = 16506
       end
-      object MenuItem103: TMenuItem
-        Action = acBigToolbar
-        Caption = 'Big Toolbar'
-      end
       object MenuItem502: TMenuItem
         Action = acMenuShow
         ShortCut = 16507
@@ -2554,10 +2550,6 @@ inherited MainForm: TMainForm
       Caption = 'Menu'
       Checked = True
       OnExecute = acMenuShowExecute
-    end
-    object acBigToolbar: TAction
-      Caption = 'acBigToolbar'
-      OnExecute = acBigToolbarExecute
     end
     object acSetLabels: TAction
       Category = 'Torrent'

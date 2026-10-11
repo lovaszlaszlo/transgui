@@ -387,6 +387,9 @@ User Menu=Felhasználói menü
 Unauthorized User=Nem azonosított felhasználó
 
 Big Toolbar=Nagy eszköztár
+Small toolbar=Kis eszköztár
+Medium toolbar=Közepes eszköztár
+Large toolbar=Nagy eszköztár
 Client Certificate=Kliens tanúsítvány
 Private Key=Privát kulcs
 

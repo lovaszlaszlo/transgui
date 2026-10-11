@@ -240,12 +240,14 @@ inherited OptionsForm: TOptionsForm
         Caption = '%'
         ParentColor = False
       end
-      object cbBigToolbar: TCheckBox
+      object cbToolbarSize: TComboBox
         Left = 392
-        Height = 19
-        Top = 120
-        Width = 85
-        Caption = 'Big Toolbar'
+        Height = 23
+        Top = 118
+        Width = 136
+        Anchors = [akTop, akLeft, akRight]
+        ItemHeight = 15
+        Style = csDropDownList
         TabOrder = 7
       end
       object cbCheckNewVersion: TCheckBox
