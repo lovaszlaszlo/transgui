@@ -30,6 +30,12 @@ case "$target_arch" in
     ;;
 esac
 
+# Code signing identity for the arm64 package. The default is an ad hoc signature,
+# which gives every build a new identity: macOS then evaluates its privacy
+# permissions (such as local network access) again on the first launch.
+# Set TRANSGUI_SIGN_IDENTITY to the name of a certificate to keep them.
+sign_identity="${TRANSGUI_SIGN_IDENTITY:--}"
+
 # install_deps.sh installs the Intel toolchain only. For arm64 install FPC and
 # Lazarus yourself and pass the Lazarus directory as the first argument.
 if [ -z "${CI-}" ] && [ "$target_arch" = "x86_64" ]; then
@@ -169,7 +175,7 @@ bundle_openssl() {
   install_name_tool -id @loader_path/libcrypto.3.dylib "$frameworks/libcrypto.3.dylib"
   install_name_tool -id @loader_path/libssl.3.dylib \
     -change "$crypto_ref" @loader_path/libcrypto.3.dylib "$frameworks/libssl.3.dylib"
-  codesign --force --sign - "$frameworks/libcrypto.3.dylib" "$frameworks/libssl.3.dylib"
+  codesign --force --sign "$sign_identity" "$frameworks/libcrypto.3.dylib" "$frameworks/libssl.3.dylib"
 }
 
 mkdir -p ../../Release/
@@ -226,7 +232,7 @@ sed -e "s/@prog_ver@/$prog_ver/" Info.plist > "$appfolder/Contents/Info.plist"
 if [ "$target_arch" = "arm64" ]; then
   bundle_openssl
   # Apple Silicon refuses to run unsigned code, and strip invalidates the linker signature.
-  codesign --force --sign - "$appfolder"
+  codesign --force --sign "$sign_identity" "$appfolder"
 fi
 
 ln -s /Applications "$dmgfolder/Drag \"Transmission Remote GUI\" here!"
