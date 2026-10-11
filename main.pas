@@ -109,6 +109,9 @@ resourcestring
   sTrackerUpdating = 'Updating';
   sRestartRequired = 'You need to restart the application to apply changes.';
   sRestartNow = 'You need to restart the application to apply changes. Restart now?';
+  sAltLimitsHint = 'Alternative limits: down %s, up %s';
+  sNormalLimitsHint = 'Normal limits: down %s, up %s';
+  sLimitsActive = '(active)';
   sPeerFlagO = 'Optimistic unchoke';
   sPeerFlagD = 'Downloading from this peer';
   sPeerFlagDWait = 'Would download from this peer if allowed';
@@ -751,6 +754,8 @@ type
     FBigImages: TImageList;
     FMediumImages: TImageList;
     FPeerFlagsHint: string;
+    // Hint of the alternate speed action without the current limits.
+    FAltSpeedHint: string;
     // Main toolbar size: ToolbarSizeSmall, ToolbarSizeMedium or ToolbarSizeLarge.
     FToolbarSize: integer;
 {$ifdef darwin}
@@ -8044,6 +8049,16 @@ end;
 procedure TMainForm.FillSessionInfo(s: TJSONObject);
 var
   d, u: integer;
+  AltLimits, NormalLimits: string;
+
+  function LimitText(AEnabled: boolean; AValue: integer): string;
+  begin
+    if AEnabled then
+      Result:=Format('%d %s%s', [AValue, sKByte, sPerSecond])
+    else
+      Result:=SUnlimited;
+  end;
+
 begin
 {$ifdef LCLcarbon}
   TrayIcon.Tag:=0;
@@ -8075,6 +8090,19 @@ begin
       TrayIcon.Tag:=1;
 {$endif LCLcarbon}
     acAltSpeed.Checked:=s.Booleans['alt-speed-enabled'];
+    // Show the current limits in the hint of the alternate speed button.
+    if FAltSpeedHint = '' then
+      FAltSpeedHint:=acAltSpeed.Hint;
+    AltLimits:=Format(sAltLimitsHint, [LimitText(True, s.Integers['alt-speed-down']),
+      LimitText(True, s.Integers['alt-speed-up'])]);
+    NormalLimits:=Format(sNormalLimitsHint,
+      [LimitText(s.Booleans['speed-limit-down-enabled'], s.Integers['speed-limit-down']),
+       LimitText(s.Booleans['speed-limit-up-enabled'], s.Integers['speed-limit-up'])]);
+    if acAltSpeed.Checked then
+      AltLimits:=AltLimits + ' ' + sLimitsActive
+    else
+      NormalLimits:=NormalLimits + ' ' + sLimitsActive;
+    acAltSpeed.Hint:=FAltSpeedHint + LineEnding + AltLimits + LineEnding + NormalLimits;
     if s.Booleans['blocklist-enabled'] then acUpdateBlocklist.Tag:=1 else acUpdateBlocklist.Tag:=0;
     acUpdateBlocklist.Enabled:=s.Booleans['blocklist-enabled'];
   end;

@@ -360,6 +360,9 @@ Unable to find path mapping.~Use the application's options to setup path mapping
 Update trackers for the existing torrent?=Update trackers for the existing torrent?
 You need to restart the application to apply changes=You need to restart the application to apply changes
 You need to restart the application to apply changes. Restart now?=You need to restart the application to apply changes. Restart now?
+Alternative limits: down %s, up %s=Alternative limits: down %s, up %s
+Normal limits: down %s, up %s=Normal limits: down %s, up %s
+(active)=(active)
 Optimistic unchoke=Optimistic unchoke
 Downloading from this peer=Downloading from this peer
 Would download from this peer if allowed=Would download from this peer if allowed
