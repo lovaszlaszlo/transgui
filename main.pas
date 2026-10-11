@@ -98,6 +98,7 @@ resourcestring
   sTrackerWorking = 'Working';
   sTrackerUpdating = 'Updating';
   sRestartRequired = 'You need to restart the application to apply changes.';
+  sRestartNow = 'You need to restart the application to apply changes. Restart now?';
   sRemoveTorrentData = 'Are you sure to remove torrent ''%s'' and all associated DATA?';
   sRemoveTorrentDataMulti = 'Are you sure to remove %d selected torrents and all their associated DATA?';
   sRemoveTorrent = 'Are you sure to remove torrent ''%s''?';
@@ -775,6 +776,9 @@ type
     procedure DownloadFinished(const TorrentName: string);
     function GetFlagImage(const CountryCode: string): integer;
     procedure BeforeCloseApp;
+{$ifdef unix}
+    procedure RestartApp;
+{$endif unix}
     function GetGeoIpDatabase: string;
     function GetFlagsArchive: string;
     function DownloadGeoIpDatabase(AUpdate: boolean): boolean;
@@ -984,7 +988,7 @@ uses
   process, dynlibs,
 {$endif linux}
 {$ifdef darwin}
-  urllistenerosx, MacSymbols,
+  urllistenerosx, MacSymbols, process,
 {$endif darwin}
   synacode, ConnOptions, clipbrd, DateUtils, TorrProps, DaemonOptions, About,
   ToolWin, download, ColSetup, AddLink, MoveTorrent, AddTracker, lcltype,
@@ -2813,7 +2817,9 @@ end;
 procedure TMainForm.acOptionsExecute(Sender: TObject);
 var
   OldCheckVer: boolean;
+  NeedRestart: boolean;
 begin
+  NeedRestart:=False;
   AppBusy;
   with TOptionsForm.Create(Self) do
   try
@@ -2883,10 +2889,15 @@ begin
       AppNormal;
       with ConnForm do
         ConnectionSettingsChanged(ActiveConnection, ActiveSettingChanged);
+      NeedRestart:=RestartNow;
     end;
   finally
     Free;
   end;
+{$ifdef unix}
+  if NeedRestart then
+    RestartApp;
+{$endif unix}
 end;
 
 procedure TMainForm.acAddTorrentExecute(Sender: TObject);
@@ -3647,6 +3658,46 @@ begin
   except
   end;
 end;
+
+{$ifdef unix}
+procedure TMainForm.RestartApp;
+var
+  P: TProcess;
+  s: string;
+begin
+  // Only one instance can run, so the new one is started by a shell
+  // that waits until this process has exited.
+  P:=TProcess.Create(nil);
+  try
+    P.Executable:='/bin/sh';
+    P.Parameters.Add('-c');
+    P.Parameters.Add('while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; shift; exec "$@"');
+    P.Parameters.Add('sh');
+    P.Parameters.Add(IntToStr(GetProcessID));
+    s:=Application.ExeName;
+{$ifdef darwin}
+    if Pos('.app/Contents/MacOS/', s) > 0 then begin
+      // Start the application bundle the way Finder does.
+      P.Parameters.Add('/usr/bin/open');
+      P.Parameters.Add('-n');
+      P.Parameters.Add(Copy(s, 1, Pos('.app/Contents/MacOS/', s) + 3));
+      if GetCmdSwitchValue('home') <> '' then
+        P.Parameters.Add('--args');
+    end
+    else
+{$endif darwin}
+      P.Parameters.Add(s);
+    if GetCmdSwitchValue('home') <> '' then
+      P.Parameters.Add('--home=' + GetCmdSwitchValue('home'));
+    P.Options:=[];
+    P.Execute;
+  finally
+    P.Free;
+  end;
+  BeforeCloseApp;
+  Application.Terminate;
+end;
+{$endif unix}
 
 procedure TMainForm.BeforeCloseApp;
 begin

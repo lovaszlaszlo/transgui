@@ -356,6 +356,7 @@ Torrent not registered with this tracker=Torrent not registered with this tracke
 Unable to find path mapping.~Use the application's options to setup path mappings=Unable to find path mapping.~Use the application's options to setup path mappings
 Update trackers for the existing torrent?=Update trackers for the existing torrent?
 You need to restart the application to apply changes=You need to restart the application to apply changes
+You need to restart the application to apply changes. Restart now?=You need to restart the application to apply changes. Restart now?
 Development site=Development site
 Magnet Link=Magnet Link
 Status bar - Sizes=Status bar - Sizes

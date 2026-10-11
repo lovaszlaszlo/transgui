@@ -95,6 +95,8 @@ type
 
     procedure FillLanguageItems;
   public
+    // The user agreed to restart the application to apply the changes.
+    RestartNow: boolean;
     ConnForm: TConnOptionsForm;
   end;
 
@@ -350,7 +352,11 @@ begin
     restart:=True;
 
   if restart then
+{$ifdef unix}
+    RestartNow:=MessageDlg(sRestartNow, mtConfirmation, mbYesNo, 0) = mrYes;
+{$else}
     MessageDlg(sRestartRequired, mtInformation, [mbOk], 0);
+{$endif unix}
   ModalResult:=mrOk;
 end;
 
