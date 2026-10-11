@@ -740,8 +740,6 @@ type
     FToolbarSymbols: array[0..2] of TImageList;
     // Search cancel icon in the size matching each toolbar size.
     FSearchSymbols: array[0..2] of TImageList;
-    // System symbol icons of the filter list.
-    FFilterSymbols: TImageList;
     // System symbol icons of the lists, menus and tabs.
     FListSymbols: TImageList;
     FToolTipsState: string;
@@ -833,7 +831,7 @@ type
     procedure AppearanceChanged;
     function CreateSymbolList(ASize: integer): TImageList;
     function AddSymbolImage(AList: TImageList; const AName: string; AColor: TColor = clNone): boolean;
-    function CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AKind: integer): TImageList;
+    function CreateToolbarSymbols(ASize: integer; AFallback: TImageList): TImageList;
     procedure UpdateToolbarToolTips;
     procedure BuildToolbarSymbols;
     procedure LayoutSearchBox;
@@ -1776,62 +1774,30 @@ end;
 
 {$ifdef darwin}
 const
-  // Main toolbar icons replaced by macOS system symbols, by image index.
-  ToolbarSymbolNames: array[0..10] of record
-    Index: integer;
-    Name: string;
-  end = (
-    (Index: 0;  Name: 'folder.badge.plus'),
-    (Index: 1;  Name: 'play.circle'),
-    (Index: 2;  Name: 'pause.circle'),
-    (Index: 3;  Name: 'trash'),
-    (Index: 8;  Name: 'wrench.and.screwdriver'),
-    (Index: 18; Name: 'powerplug'),
-    (Index: 21; Name: 'link.badge.plus'),
-    (Index: 38; Name: 'tortoise'),
-    (Index: 40; Name: 'arrow.up.circle'),
-    (Index: 41; Name: 'arrow.down.circle'),
-    (Index: 43; Name: 'gearshape')
-  );
-  // Filter list icons replaced by macOS system symbols, by image index.
-  FilterSymbolNames: array[0..10] of record
-    Index: integer;
-    Name: string;
-  end = (
-    (Index: 5;  Name: 'antenna.radiowaves.left.and.right'),  // tracker
-    (Index: 9;  Name: 'arrow.down.circle'),                  // imgDown
-    (Index: 10; Name: 'checkmark.circle'),                   // imgSeed
-    (Index: 13; Name: 'exclamationmark.triangle'),           // imgError
-    (Index: 15; Name: 'moon.zzz'),                           // imgInactive
-    (Index: 19; Name: 'tray.full'),                          // imgAll
-    (Index: 20; Name: 'arrow.up.arrow.down.circle'),         // imgActive
-    (Index: 22; Name: 'folder'),                             // download folder
-    (Index: 29; Name: 'pause.circle'),                       // imgStopped
-    (Index: 42; Name: 'clock'),                              // imgWaiting
-    (Index: 44; Name: 'tag')                                 // label
-  );
-  // Colors of the status symbols; readable in the light and the dark appearance.
+  // Colors of the symbols; readable in the light and the dark appearance.
   SymBlue = $00FF7A00;
   SymGreen = $0059C734;
   SymRed = $00303BFF;
   SymOrange = $000095FF;
+  SymTeal = $00C8B030;
+  SymPurple = $00DE52AF;
   SymGray = $00938E8E;
-  // Icons of the lists, menus and tabs replaced by macOS system symbols, by image index.
-  // clNone stands for the text-like color of the toolbar symbols.
-  ListSymbolNames: array[0..36] of record
+  // Icons replaced by macOS system symbols, by image index. The toolbar,
+  // the menus, the lists and the tabs all use the same symbols.
+  SymbolNames: array[0..36] of record
     Index: integer;
     Name: string;
     Color: TColor;
   end = (
-    (Index: 0;  Name: 'folder.badge.plus'; Color: clNone),
-    (Index: 1;  Name: 'play.circle'; Color: clNone),
-    (Index: 2;  Name: 'pause.circle'; Color: clNone),
-    (Index: 3;  Name: 'trash'; Color: clNone),
-    (Index: 4;  Name: 'info.circle'; Color: clNone),
-    (Index: 5;  Name: 'antenna.radiowaves.left.and.right'; Color: clNone),
-    (Index: 6;  Name: 'person.2'; Color: clNone),
-    (Index: 7;  Name: 'doc.on.doc'; Color: clNone),
-    (Index: 8;  Name: 'wrench.and.screwdriver'; Color: clNone),
+    (Index: 0;  Name: 'folder.fill.badge.plus'; Color: SymBlue),           // add torrent
+    (Index: 1;  Name: 'play.circle.fill'; Color: SymGreen),                // start
+    (Index: 2;  Name: 'pause.circle.fill'; Color: SymOrange),              // stop
+    (Index: 3;  Name: 'trash.fill'; Color: SymRed),                        // remove
+    (Index: 4;  Name: 'info.circle.fill'; Color: SymBlue),                 // general tab
+    (Index: 5;  Name: 'antenna.radiowaves.left.and.right'; Color: SymPurple), // trackers
+    (Index: 6;  Name: 'person.2.fill'; Color: SymBlue),                    // peers tab
+    (Index: 7;  Name: 'doc.on.doc.fill'; Color: SymGray),                  // files tab
+    (Index: 8;  Name: 'wrench.and.screwdriver.fill'; Color: SymGray),      // Transmission options
     (Index: 9;  Name: 'arrow.down.circle.fill'; Color: SymBlue),           // imgDown
     (Index: 10; Name: 'arrow.up.circle.fill'; Color: SymGreen),            // imgSeed
     (Index: 11; Name: 'arrow.down.circle.fill'; Color: SymRed),            // imgDownError
@@ -1841,30 +1807,26 @@ const
     (Index: 15; Name: 'moon.zzz.fill'; Color: SymGray),                    // imgInactive
     (Index: 16; Name: 'clock.fill'; Color: SymBlue),                       // imgDownQueue
     (Index: 17; Name: 'clock.fill'; Color: SymGreen),                      // imgSeedQueue
-    (Index: 18; Name: 'powerplug'; Color: clNone),
-    (Index: 19; Name: 'tray.full'; Color: clNone),                         // imgAll
+    (Index: 18; Name: 'powerplug.fill'; Color: SymBlue),                   // connect
+    (Index: 19; Name: 'tray.full.fill'; Color: SymBlue),                   // imgAll
     (Index: 20; Name: 'arrow.up.arrow.down.circle.fill'; Color: SymGreen), // imgActive
-    (Index: 21; Name: 'link.badge.plus'; Color: clNone),
-    (Index: 22; Name: 'folder.fill'; Color: SymBlue),
+    (Index: 21; Name: 'link.badge.plus'; Color: SymBlue),                  // add link
+    (Index: 22; Name: 'folder.fill'; Color: SymBlue),                      // folder
     (Index: 23; Name: 'nosign'; Color: SymGray),                           // skip
     (Index: 24; Name: 'chevron.down.circle.fill'; Color: SymBlue),         // low priority
     (Index: 25; Name: 'equal.circle.fill'; Color: SymGreen),               // normal priority
     (Index: 26; Name: 'chevron.up.circle.fill'; Color: SymRed),            // high priority
-    (Index: 27; Name: 'power'; Color: clNone),
-    (Index: 28; Name: 'doc'; Color: clNone),
+    (Index: 27; Name: 'power'; Color: SymRed),                             // disconnect
+    (Index: 28; Name: 'doc.fill'; Color: SymGray),                         // open file
     (Index: 29; Name: 'pause.circle.fill'; Color: SymOrange),              // imgStopped
-    (Index: 38; Name: 'tortoise'; Color: clNone),
-    (Index: 39; Name: 'bolt.circle'; Color: clNone),
-    (Index: 40; Name: 'arrow.up.circle'; Color: clNone),
-    (Index: 41; Name: 'arrow.down.circle'; Color: clNone),
-    (Index: 42; Name: 'clock'; Color: SymGray),                            // imgWaiting
-    (Index: 43; Name: 'gearshape'; Color: clNone),
-    (Index: 44; Name: 'tag'; Color: clNone)
+    (Index: 38; Name: 'tortoise.fill'; Color: SymTeal),                    // alternate speed
+    (Index: 39; Name: 'bolt.circle.fill'; Color: SymGreen),                // force start
+    (Index: 40; Name: 'arrow.up.circle.fill'; Color: SymBlue),             // queue up
+    (Index: 41; Name: 'arrow.down.circle.fill'; Color: SymBlue),           // queue down
+    (Index: 42; Name: 'clock.fill'; Color: SymGray),                       // imgWaiting
+    (Index: 43; Name: 'gearshape.fill'; Color: SymGray),                   // application options
+    (Index: 44; Name: 'tag.fill'; Color: SymOrange)                        // label
   );
-  // Kinds of symbol lists.
-  SymbolsForToolbar = 0;
-  SymbolsForFilter = 1;
-  SymbolsForLists = 2;
   SearchSymbolName = 'magnifyingglass';
   SearchCancelSymbolName = 'xmark.circle.fill';
   // Search box metrics at 100% interface scale for each toolbar size.
@@ -1916,7 +1878,7 @@ begin
   end;
 end;
 
-function TMainForm.CreateToolbarSymbols(ASize: integer; AFallback: TImageList; AKind: integer): TImageList;
+function TMainForm.CreateToolbarSymbols(ASize: integer; AFallback: TImageList): TImageList;
 var
   i, j: integer;
   SymbolName: string;
@@ -1930,22 +1892,11 @@ begin
     for i:=0 to AFallback.Count - 1 do begin
       SymbolName:='';
       SymbolColor:=clNone;
-      case AKind of
-        SymbolsForFilter:
-          for j:=Low(FilterSymbolNames) to High(FilterSymbolNames) do
-            if FilterSymbolNames[j].Index = i then
-              SymbolName:=FilterSymbolNames[j].Name;
-        SymbolsForLists:
-          for j:=Low(ListSymbolNames) to High(ListSymbolNames) do
-            if ListSymbolNames[j].Index = i then begin
-              SymbolName:=ListSymbolNames[j].Name;
-              SymbolColor:=ListSymbolNames[j].Color;
-            end;
-        else
-          for j:=Low(ToolbarSymbolNames) to High(ToolbarSymbolNames) do
-            if ToolbarSymbolNames[j].Index = i then
-              SymbolName:=ToolbarSymbolNames[j].Name;
-      end;
+      for j:=Low(SymbolNames) to High(SymbolNames) do
+        if SymbolNames[j].Index = i then begin
+          SymbolName:=SymbolNames[j].Name;
+          SymbolColor:=SymbolNames[j].Color;
+        end;
       if (SymbolName <> '') and AddSymbolImage(Result, SymbolName, SymbolColor) then begin
         HasSymbols:=True;
         continue;
@@ -1998,19 +1949,17 @@ begin
         i:=ScaleInt(ImageList16.Width);
       end;
     end;
-    FToolbarSymbols[Size]:=CreateToolbarSymbols(i, Fallback, SymbolsForToolbar);
+    FToolbarSymbols[Size]:=CreateToolbarSymbols(i, Fallback);
     if Size = ToolbarSizeSmall then begin
-      // Controls must not keep a reference to the lists being replaced.
+      // Controls must not keep a reference to the list being replaced.
       AssignSharedImages(Fallback);
-      FreeAndNil(FFilterSymbols);
       FreeAndNil(FListSymbols);
-      FFilterSymbols:=CreateToolbarSymbols(i, Fallback, SymbolsForFilter);
-      FListSymbols:=CreateToolbarSymbols(i, Fallback, SymbolsForLists);
+      FListSymbols:=CreateToolbarSymbols(i, Fallback);
     end;
     if FToolbarSymbols[Size] <> nil then begin
       // The search box icons grow with the toolbar, but stay smaller than its buttons.
       FSearchSymbols[Size]:=CreateSymbolList(ScaleInt(SearchIconSizes[Size]));
-      if not AddSymbolImage(FSearchSymbols[Size], SearchCancelSymbolName) then
+      if not AddSymbolImage(FSearchSymbols[Size], SearchCancelSymbolName, SymGray) then
         FreeAndNil(FSearchSymbols[Size]);
     end;
   end;
@@ -2062,7 +2011,7 @@ begin
   IconSize:=FSearchSymbols[FToolbarSize].Width;
   panSearch.DisableAlign;
   try
-    Bmp:=CreateSymbolBitmap(SearchSymbolName, IconSize*2, ToolbarSymbolColor);
+    Bmp:=CreateSymbolBitmap(SearchSymbolName, IconSize*2, SymGray);
     if Bmp <> nil then
       try
         imgSearch.Picture.Assign(Bmp);
@@ -2115,7 +2064,7 @@ procedure TMainForm.AssignSharedImages(AImages: TImageList);
   begin
     Result:=(AList = ImageList16) or (AList = ImageList32) or (AList = FNormalImages);
 {$ifdef darwin}
-    if (AList <> nil) and ((AList = FListSymbols) or (AList = FFilterSymbols)) then
+    if (AList <> nil) and (AList = FListSymbols) then
       Result:=True;
 {$endif darwin}
   end;
@@ -2211,8 +2160,6 @@ begin
       ToolButtonSize:=ToolbarImages.Height + ScaleInt(14);
   end;
   LayoutSearchBox;
-  if FFilterSymbols <> nil then
-    lvFilter.Images:=FFilterSymbols;
 {$endif darwin}
   MainToolBar.Images:=ToolbarImages;
   MainToolBar.ImagesWidth:=ToolbarImages.Width;
