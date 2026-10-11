@@ -8270,6 +8270,13 @@ begin
       ForceAppNormal;
       if Fatal and not RpcObj.Connected and RpcObj.ReconnectAllowed and (FReconnectTimeOut <> -1) then begin
         FReconnectWaitStart:=Now;
+{$ifdef darwin}
+        // On the first launch of a new build macOS refuses the first connection
+        // to the local network at once and allows the next one: retry sooner.
+        if (FReconnectTimeOut = 0) and RpcObj.HostUnreachableAtOnce then
+          FReconnectTimeOut:=1
+        else
+{$endif darwin}
         if FReconnectTimeOut < 60 then
           if FReconnectTimeOut < 10 then
             Inc(FReconnectTimeOut, 5)

@@ -149,6 +149,9 @@ type
     AdvInfo: TAdvInfoType;
     RequestFullInfo: boolean;
     ReconnectAllowed: boolean;
+    // The last request was refused by the system at once with a "no route to host"
+    // error, without reaching the network.
+    HostUnreachableAtOnce: boolean;
     RequestStartTime: TDateTime;
 
     constructor Create;
@@ -189,7 +192,7 @@ function EnsureOpenSSLLoaded(out ASSLName, AUtilName: string): boolean;
 
 implementation
 
-uses Main, ssl_openssl_lib, synafpc, blcksock, LazFileUtils;
+uses Main, ssl_openssl_lib, synafpc, blcksock, synsock, LazFileUtils;
 
 const
   ConnectionLogName = 'connection.log';
@@ -1065,6 +1068,8 @@ begin
         Http.Sock.SSL.DataTimeout:=OldDataTimeOut;
         Http.Sock.NonblockSendTimeout:=OldNonblockSendTimeOut;
       end;
+      HostUnreachableAtOnce:=not r and (Http.Sock.LastError = WSAEHOSTUNREACH) and
+        (Now - RequestStartTime < 0.2/SecsPerDay);
       if not r then
         LogConnection(Format('FAILED  %s%s: socket error %d (%s)',
           [Url, FRpcPath, Http.Sock.LastError, Http.Sock.LastErrorDesc]))
