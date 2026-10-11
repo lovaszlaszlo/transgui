@@ -725,6 +725,11 @@ type
     FDetailsWait: TProgressImage;
     FNormalImages: TImageList;
     FBigImages: TImageList;
+{$ifdef darwin}
+    // System symbol icons of the main toolbar: normal and big size.
+    FToolbarSymbols: array[boolean] of TImageList;
+    FSearchCancelImage: integer;
+{$endif darwin}
     FDetailsWaitStart: TDateTime;
     FMainFormShown: boolean;
     FRestoreFilesFocus: boolean;
@@ -802,6 +807,11 @@ type
     procedure CheckAddTorrents;
     procedure UpdateThemeColors;
     procedure ThemeChanged(Sender: TObject);
+{$ifdef darwin}
+    procedure AppearanceChanged;
+    function CreateToolbarSymbols(ASize: integer; AFallback: TImageList): TImageList;
+    procedure BuildToolbarSymbols;
+{$endif darwin}
     procedure CheckClipboardLink;
     procedure CenterDetailsWait;
     procedure SetInfoPaneHeight(AHeight: integer);
@@ -966,7 +976,7 @@ uses
   process, dynlibs,
 {$endif linux}
 {$ifdef darwin}
-  urllistenerosx,
+  urllistenerosx, MacSymbols,
 {$endif darwin}
   synacode, ConnOptions, clipbrd, DateUtils, TorrProps, DaemonOptions, About,
   ToolWin, download, ColSetup, AddLink, MoveTorrent, AddTracker, lcltype,
@@ -1710,6 +1720,178 @@ begin
   end;
 end;
 
+{$ifdef darwin}
+const
+  // Main toolbar icons replaced by macOS system symbols, by image index.
+  ToolbarSymbolNames: array[0..10] of record
+    Index: integer;
+    Name: string;
+  end = (
+    (Index: 0;  Name: 'folder.badge.plus'),
+    (Index: 1;  Name: 'play.circle'),
+    (Index: 2;  Name: 'pause.circle'),
+    (Index: 3;  Name: 'trash'),
+    (Index: 8;  Name: 'wrench.and.screwdriver'),
+    (Index: 18; Name: 'powerplug'),
+    (Index: 21; Name: 'link.badge.plus'),
+    (Index: 38; Name: 'tortoise'),
+    (Index: 40; Name: 'arrow.up.circle'),
+    (Index: 41; Name: 'arrow.down.circle'),
+    (Index: 43; Name: 'gearshape')
+  );
+  SearchSymbolName = 'magnifyingglass';
+  SearchCancelSymbolName = 'xmark.circle.fill';
+
+function ToolbarSymbolColor: TColor;
+begin
+  // Slightly softer than the text color, like native toolbar icons.
+  Result:=ColorToRGB(clBtnText);
+  if (Result and $FF) + ((Result shr 8) and $FF) + ((Result shr 16) and $FF) < 3*$80 then
+    Result:=$505050
+  else
+    Result:=$D8D8D8;
+end;
+
+function TMainForm.CreateToolbarSymbols(ASize: integer; AFallback: TImageList): TImageList;
+var
+  SymbolColor: TColor;
+  List: TImageList;
+
+  function AddSymbol(const AName: string): boolean;
+  var
+    Small, Large: TBitmap;
+    Images: array[0..1] of TCustomBitmap;
+  begin
+    Result:=False;
+    Large:=nil;
+    Small:=CreateSymbolBitmap(AName, ASize, SymbolColor);
+    try
+      if Small <> nil then
+        Large:=CreateSymbolBitmap(AName, ASize*2, SymbolColor);
+      if Large <> nil then begin
+        // The double size image keeps the icon sharp on Retina displays.
+        Images[0]:=Small;
+        Images[1]:=Large;
+        List.AddMultipleResolutions(Images);
+        Result:=True;
+      end;
+    finally
+      Small.Free;
+      Large.Free;
+    end;
+  end;
+
+var
+  i, j: integer;
+  SymbolName: string;
+  Bmp: TBitmap;
+begin
+  SymbolColor:=ToolbarSymbolColor;
+  List:=TImageList.Create(Self);
+  try
+    List.Width:=ASize;
+    List.Height:=ASize;
+    List.Scaled:=True;
+    List.RegisterResolutions([ASize, ASize*2]);
+    for i:=0 to AFallback.Count - 1 do begin
+      SymbolName:='';
+      for j:=Low(ToolbarSymbolNames) to High(ToolbarSymbolNames) do
+        if ToolbarSymbolNames[j].Index = i then
+          SymbolName:=ToolbarSymbolNames[j].Name;
+      if (SymbolName <> '') and AddSymbol(SymbolName) then
+        continue;
+      if i = 0 then
+        // No system symbols on this macOS version.
+        raise Exception.Create('System symbols are not available.');
+      Bmp:=TBitmap.Create;
+      try
+        AFallback.GetBitmap(i, Bmp);
+        List.Add(Bmp, nil);
+      finally
+        Bmp.Free;
+      end;
+    end;
+    FSearchCancelImage:=List.Count;
+    if not AddSymbol(SearchCancelSymbolName) then
+      FSearchCancelImage:=3;
+  except
+    FreeAndNil(List);
+  end;
+  Result:=List;
+end;
+
+procedure TMainForm.BuildToolbarSymbols;
+var
+  Big: boolean;
+  Fallback: TImageList;
+  Bmp: TBitmap;
+  i: integer;
+begin
+  for Big:=False to True do begin
+    if MainToolBar.Images = FToolbarSymbols[Big] then
+      MainToolBar.Images:=nil;
+    if SearchToolbar.Images = FToolbarSymbols[Big] then
+      SearchToolbar.Images:=nil;
+    FreeAndNil(FToolbarSymbols[Big]);
+    if Big then begin
+      Fallback:=FBigImages;
+      if Fallback = nil then
+        Fallback:=ImageList32;
+      i:=ScaleInt(ImageList32.Width);
+    end
+    else begin
+      Fallback:=FNormalImages;
+      if Fallback = nil then
+        Fallback:=ImageList16;
+      i:=ScaleInt(ImageList16.Width);
+    end;
+    FToolbarSymbols[Big]:=CreateToolbarSymbols(i, Fallback);
+  end;
+
+  if FToolbarSymbols[False] = nil then
+    exit;
+
+  // Search box: the icon, the edit at its natural height and the cancel button,
+  // all centered vertically, whatever the toolbar height is.
+  i:=FToolbarSymbols[False].Width;
+  Bmp:=CreateSymbolBitmap(SearchSymbolName, i*2, ToolbarSymbolColor);
+  if Bmp <> nil then
+    try
+      imgSearch.Picture.Assign(Bmp);
+      imgSearch.Stretch:=True;
+      imgSearch.Proportional:=True;
+    finally
+      Bmp.Free;
+    end;
+  imgSearch.Align:=alNone;
+  imgSearch.Anchors:=[akLeft, akTop];
+  imgSearch.SetBounds(0, 0, i, i);
+  imgSearch.AnchorSide[akLeft].Control:=panSearch;
+  imgSearch.AnchorSide[akLeft].Side:=asrLeft;
+  imgSearch.BorderSpacing.Left:=ScaleInt(4);
+  imgSearch.AnchorVerticalCenterTo(panSearch);
+
+  SearchToolbar.Align:=alNone;
+  SearchToolbar.Anchors:=[akRight, akTop];
+  SearchToolbar.EdgeBorders:=[];
+  SearchToolbar.ButtonWidth:=i + ScaleInt(6);
+  SearchToolbar.ButtonHeight:=i + ScaleInt(6);
+  SearchToolbar.SetBounds(0, 0, SearchToolbar.ButtonWidth + 2, SearchToolbar.ButtonHeight);
+  SearchToolbar.AnchorSide[akRight].Control:=panSearch;
+  SearchToolbar.AnchorSide[akRight].Side:=asrRight;
+  SearchToolbar.AnchorVerticalCenterTo(panSearch);
+
+  edSearch.Align:=alNone;
+  edSearch.Anchors:=[akLeft, akRight, akTop];
+  edSearch.AnchorSide[akLeft].Control:=imgSearch;
+  edSearch.AnchorSide[akLeft].Side:=asrRight;
+  edSearch.BorderSpacing.Left:=ScaleInt(4);
+  edSearch.AnchorSide[akRight].Control:=SearchToolbar;
+  edSearch.AnchorSide[akRight].Side:=asrLeft;
+  edSearch.AnchorVerticalCenterTo(panSearch);
+end;
+{$endif darwin}
+
 procedure TMainForm.ApplyIconLayout;
 var
   C: TComponent;
@@ -1789,6 +1971,15 @@ begin
     end;
   end;
 
+{$ifdef darwin}
+  if FToolbarSymbols[acBigToolbar.Checked] <> nil then
+    ToolbarImages:=FToolbarSymbols[acBigToolbar.Checked];
+  if FToolbarSymbols[False] <> nil then begin
+    SearchToolbar.Images:=FToolbarSymbols[False];
+    SearchToolbar.ImagesWidth:=FToolbarSymbols[False].Width;
+    tbSearchCancel.ImageIndex:=FSearchCancelImage;
+  end;
+{$endif darwin}
   MainToolBar.Images:=ToolbarImages;
   MainToolBar.ImagesWidth:=ToolbarImages.Width;
   MainToolBar.ButtonWidth:=ToolButtonSize;
@@ -1862,6 +2053,10 @@ begin
   lvFilter.Items.ExtraColumns:=2;
   UpdateThemeColors;
   ThemeServices.OnThemeChange:=@ThemeChanged;
+{$ifdef darwin}
+  // LCL does not report the light/dark switch reliably.
+  SetAppearanceChangedHandler(@AppearanceChanged);
+{$endif darwin}
   FPendingTorrents:=TStringList.Create;
   FPendingTorrents.OwnsObjects:=False; // Object slots hold the sentinel, not instances.
   FPendingClipboardTorrents:=TStringList.Create;
@@ -2105,6 +2300,9 @@ begin
   {$endif windows}
 
   BuildScaledImages;
+{$ifdef darwin}
+  BuildToolbarSymbols;
+{$endif darwin}
   ApplyIconLayout;
 
 //Dynamic Associations of ShortCuts to Actions/Menus
@@ -2173,6 +2371,9 @@ begin
   end;
 
   ThemeServices.OnThemeChange:=nil;
+{$ifdef darwin}
+  SetAppearanceChangedHandler(nil);
+{$endif darwin}
   DeleteFileUTF8(FRunFileName);
   FPasswords.Free;
   FResolver.Free;
@@ -8573,6 +8774,16 @@ procedure TMainForm.ThemeChanged(Sender: TObject);
 begin
   UpdateThemeColors;
 end;
+
+{$ifdef darwin}
+procedure TMainForm.AppearanceChanged;
+begin
+  UpdateThemeColors;
+  // The symbol icons are painted with a theme dependent color.
+  BuildToolbarSymbols;
+  ApplyIconLayout;
+end;
+{$endif darwin}
 
 procedure TMainForm.CheckAddTorrents;
 var
