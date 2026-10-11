@@ -55,6 +55,10 @@ const
   ToolbarSizeMedium = 1;
   ToolbarSizeLarge = 2;
   MediumToolbarIconSize = 24;
+  // Date and time format used everywhere in the interface.
+  TorrentDateFormat = 'yyyy"."mm"."dd hh":"nn":"ss';
+  // Image of the info icon in the title of the peer flags column.
+  PeerFlagsInfoImage = 4;
 
 resourcestring
   sAll = 'All torrents';
@@ -105,6 +109,18 @@ resourcestring
   sTrackerUpdating = 'Updating';
   sRestartRequired = 'You need to restart the application to apply changes.';
   sRestartNow = 'You need to restart the application to apply changes. Restart now?';
+  sPeerFlagO = 'Optimistic unchoke';
+  sPeerFlagD = 'Downloading from this peer';
+  sPeerFlagDWait = 'We would download from this peer if they would let us';
+  sPeerFlagU = 'Uploading to this peer';
+  sPeerFlagUWait = 'We would upload to this peer if they asked';
+  sPeerFlagK = 'The peer has unchoked us, but we are not interested';
+  sPeerFlagQ = 'We unchoked this peer, but they are not interested';
+  sPeerFlagE = 'Encrypted connection';
+  sPeerFlagH = 'The peer was found through DHT';
+  sPeerFlagX = 'The peer was found through peer exchange (PEX)';
+  sPeerFlagI = 'The peer is an incoming connection';
+  sPeerFlagT = 'The peer is connected over uTP';
   sToolbarSmall = 'Small toolbar';
   sToolbarMedium = 'Medium toolbar';
   sToolbarLarge = 'Large toolbar';
@@ -653,6 +669,7 @@ type
     procedure lvFilterClick(Sender: TObject);
     procedure lvFilterDrawCell(Sender: TVarGrid; ACol, ARow, ADataCol: integer; AState: TGridDrawState; const R: TRect; var ADefaultDrawing: boolean);
     procedure lvPeersCellAttributes(Sender: TVarGrid; ACol, ARow, ADataCol: integer; AState: TGridDrawState; var CellAttribs: TCellAttributes);
+    procedure lvPeersMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     procedure lvTrackersCellAttributes(Sender: TVarGrid; ACol, ARow, ADataCol: integer; AState: TGridDrawState; var CellAttribs: TCellAttributes);
     procedure lvTrackersDblClick(Sender: TObject);
     procedure lvTrackersKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -733,6 +750,7 @@ type
     FNormalImages: TImageList;
     FBigImages: TImageList;
     FMediumImages: TImageList;
+    FPeerFlagsHint: string;
     // Main toolbar size: ToolbarSizeSmall, ToolbarSizeMedium or ToolbarSizeLarge.
     FToolbarSize: integer;
 {$ifdef darwin}
@@ -1571,6 +1589,47 @@ begin
   FTimer.Interval:=AValue;
 end;
 
+{$ifdef darwin}
+procedure TProgressImage.Paint;
+var
+  i, n, phase, age, cx, cy, size: integer;
+  r1, r2, a, t: double;
+  fg, bg: TColor;
+begin
+  // The frame bitmaps are blurry on Retina displays: draw the spinner as lines.
+  n:=FEndIndex - FStartIndex + 1;
+  if n < 2 then
+    n:=8;
+  phase:=FImageIndex - FStartIndex;
+  size:=Width;
+  if Height < size then
+    size:=Height;
+  cx:=Width div 2;
+  cy:=Height div 2;
+  r1:=size*0.20;
+  r2:=size*0.40;
+  fg:=$808080;
+  bg:=ColorToRGB(clForm);
+  with Canvas do begin
+    Pen.Style:=psSolid;
+    Pen.EndCap:=pecRound;
+    Pen.Width:=size div 10;
+    if Pen.Width < 2 then
+      Pen.Width:=2;
+    for i:=0 to n - 1 do begin
+      // The spoke under the head is the darkest, the ones behind it fade out.
+      age:=(phase - i + n) mod n;
+      t:=0.15 + 0.85*(1 - age/n);
+      Pen.Color:=RGBToColor(
+        Round(Red(bg) + (Red(fg) - Red(bg))*t),
+        Round(Green(bg) + (Green(fg) - Green(bg))*t),
+        Round(Blue(bg) + (Blue(fg) - Blue(bg))*t));
+      a:=2*Pi*i/n - Pi/2;
+      Line(cx + Round(Cos(a)*r1), cy + Round(Sin(a)*r1), cx + Round(Cos(a)*r2), cy + Round(Sin(a)*r2));
+    end;
+  end;
+end;
+{$else}
 procedure TProgressImage.Paint;
 begin
   if FBmp = nil then begin
@@ -1591,6 +1650,7 @@ begin
   end;
   Canvas.Draw(0, 0, FBmp);
 end;
+{$endif darwin}
 
 procedure TProgressImage.VisibleChanged;
 begin
@@ -2098,6 +2158,8 @@ begin
     else if C is TVarGrid then begin
       if IsShared(TVarGrid(C).Images) then
         TVarGrid(C).Images:=AImages;
+      if IsShared(TVarGrid(C).TitleImageList) then
+        TVarGrid(C).TitleImageList:=AImages;
     end;
   end;
 end;
@@ -2381,6 +2443,15 @@ begin
   acTrackerGrouping.Checked:=Ini.ReadBool('Interface', 'TrackerGrouping', True);
 
   LoadColumns(gTorrents, 'TorrentsList');
+  // The date columns must fit a full date and time.
+  if not Ini.ReadBool('MainForm', 'FromNow', False) then begin
+    Canvas.Font.Assign(gTorrents.Font);
+    j:=Canvas.TextWidth(FormatDateTime(TorrentDateFormat, EncodeDate(2000, 10, 20) + EncodeTime(20, 50, 50, 0))) + ScaleInt(12);
+    for i:=0 to gTorrents.Columns.Count - 1 do
+      with gTorrents.Columns[i] do
+        if (ID - 1 in [idxAddedOn, idxCompletedOn, idxLastActive]) and Visible and (Width < j) then
+          Width:=j;
+  end;
   TorrentColumnsChanged;
   LoadColumns(lvFiles, 'FilesList');
   LoadColumns(lvPeers, 'PeerList');
@@ -2485,6 +2556,12 @@ begin
     Ini.WriteInteger('Interface','FileOpenDoc',FLinuxOpenDoc);
   {$endif windows}
 
+  // Info icon in the title of the peer flags column; its tooltip explains the flags.
+  lvPeers.TitleImageList:=ImageList16;
+  for i:=0 to lvPeers.Columns.Count - 1 do
+    if lvPeers.Columns[i].ID - 1 = idxPeerFlags then
+      lvPeers.Columns[i].Title.ImageIndex:=PeerFlagsInfoImage;
+  lvPeers.OnMouseMove:=@lvPeersMouseMove;
   BuildScaledImages;
   BuildMediumImages;
 {$ifdef darwin}
@@ -4020,7 +4097,7 @@ begin
     if FromNow then
       s := HumanReadableTime(Now,UnixToDateTime(d) + GetTimeZoneDelta)
     else
-      s := DateTimeToStr(UnixToDateTime(d) + GetTimeZoneDelta);
+      s := FormatDateTime(TorrentDateFormat, UnixToDateTime(d) + GetTimeZoneDelta);
     Result := s;
   end;
 end;
@@ -5558,6 +5635,73 @@ begin
     RR.Bottom:=i + 1;
     FillRect(RR);
   end;
+end;
+
+// Explains the peer flag letters reported by Transmission.
+// An empty AFlags gives the description of all flags.
+function DescribePeerFlags(const AFlags: string): string;
+const
+  FlagChars = 'ODdUuK?EHXIT';
+var
+  Flags: string;
+  i: integer;
+
+  function FlagText(AFlag: char): string;
+  begin
+    case AFlag of
+      'O': Result:=sPeerFlagO;
+      'D': Result:=sPeerFlagD;
+      'd': Result:=sPeerFlagDWait;
+      'U': Result:=sPeerFlagU;
+      'u': Result:=sPeerFlagUWait;
+      'K': Result:=sPeerFlagK;
+      '?': Result:=sPeerFlagQ;
+      'E': Result:=sPeerFlagE;
+      'H': Result:=sPeerFlagH;
+      'X': Result:=sPeerFlagX;
+      'I': Result:=sPeerFlagI;
+      'T': Result:=sPeerFlagT;
+      else Result:='';
+    end;
+  end;
+
+begin
+  Result:='';
+  Flags:=AFlags;
+  if Flags = '' then
+    Flags:=FlagChars;
+  for i:=1 to Length(Flags) do
+    if FlagText(Flags[i]) <> '' then begin
+      if Result <> '' then
+        Result:=Result + LineEnding;
+      Result:=Result + Flags[i] + ' - ' + FlagText(Flags[i]);
+    end;
+end;
+
+procedure TMainForm.lvPeersMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+var
+  r, c: integer;
+  s: string;
+begin
+  s:='';
+  lvPeers.MouseToCell(X, Y, c, r);
+  if (c >= 0) and (lvPeers.ColToDataCol(c) = idxPeerFlags) then
+    if r = 0 then
+      // Column title: all flags.
+      s:=DescribePeerFlags('')
+    else
+      if (r > 0) and (r <= lvPeers.Items.Count) then
+        s:=DescribePeerFlags(UTF8Encode(widestring(lvPeers.Items[idxPeerFlags, r - 1])));
+  if s = FPeerFlagsHint then
+    exit;
+  FPeerFlagsHint:=s;
+{$ifdef darwin}
+  // LCL hints are not reliable on macOS: use the native tooltip.
+  SetViewToolTip(lvPeers.Handle, s);
+{$else}
+  Application.CancelHint;
+  lvPeers.Hint:=s;
+{$endif darwin}
 end;
 
 procedure TMainForm.lvPeersCellAttributes(Sender: TVarGrid; ACol, ARow, ADataCol: integer; AState: TGridDrawState; var CellAttribs: TCellAttributes);

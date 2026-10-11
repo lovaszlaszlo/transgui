@@ -46,6 +46,9 @@ procedure SetAppearanceChangedHandler(AHandler: TAppearanceChangedEvent);
 // ARects are in its client coordinates. Only one control can have such tooltips.
 procedure SetViewToolTips(AHandle: PtrUInt; const ARects: array of TRect; const ATexts: array of string);
 
+// Sets the native tooltip of a whole control; an empty text removes it.
+procedure SetViewToolTip(AHandle: PtrUInt; const AText: string);
+
 implementation
 
 uses
@@ -156,6 +159,16 @@ begin
     // An NSString owner is shown as the tooltip text.
     v.addToolTipRect_owner_userData(r, txt, nil);
   end;
+end;
+
+procedure SetViewToolTip(AHandle: PtrUInt; const AText: string);
+begin
+  if AHandle = 0 then
+    exit;
+  if AText = '' then
+    NSView(AHandle).setToolTip(nil)
+  else
+    NSView(AHandle).setToolTip(NSString.stringWithUTF8String(PChar(AText)));
 end;
 
 const
